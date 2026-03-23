@@ -1,0 +1,10 @@
+CREATE CONSTRAINT task_id_unique IF NOT EXISTS FOR (t:Task) REQUIRE t.task_id IS UNIQUE;
+CREATE CONSTRAINT evidence_hash_unique IF NOT EXISTS FOR (e:Evidence) REQUIRE e.fact_hash IS UNIQUE;
+CREATE CONSTRAINT conclusion_id_unique IF NOT EXISTS FOR (c:Conclusion) REQUIRE c.conclusion_id IS UNIQUE;
+CREATE CONSTRAINT lesson_id_unique IF NOT EXISTS FOR (l:Lesson) REQUIRE l.lesson_id IS UNIQUE;
+CREATE CONSTRAINT event_id_unique IF NOT EXISTS FOR (ev:Event) REQUIRE ev.event_id IS UNIQUE;
+CREATE INDEX task_category IF NOT EXISTS FOR (t:Task) ON (t.category);
+CREATE INDEX task_outcome IF NOT EXISTS FOR (t:Task) ON (t.outcome);
+CREATE INDEX conclusion_confidence IF NOT EXISTS FOR (c:Conclusion) ON (c.confidence);
+CREATE INDEX lesson_needs_review IF NOT EXISTS FOR (l:Lesson) ON (l.needs_review);
+CREATE INDEX lesson_mastery IF NOT EXISTS FOR (l:Lesson) ON (l.mastery);
