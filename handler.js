@@ -3,6 +3,8 @@ import { writeFileSync } from 'node:fs';
 
 const LOG = '/tmp/total-recall.log';
 const MEMORY_DIR = '/home/ironman/.openclaw/skills/memory-reflect';
+const PYTHON = '/home/ironman/.openclaw/skills/memory-reflect/.venv/bin/python';
+const SCRIPT = '/home/ironman/.openclaw/skills/memory-reflect/memory-reflect.py';
 
 function log(msg) {
   writeFileSync(LOG, `[${new Date().toISOString()}] ${msg}\n`, { flag: 'a' });
@@ -47,9 +49,9 @@ function inferCategory(prompt) {
 }
 
 function runFlashback(category) {
-  const cmd = `cd ${MEMORY_DIR} && poetry run python memory-reflect.py --flashback --category ${category}`;
+  const cmd = `${PYTHON} ${SCRIPT} --flashback --category ${category}`;
   try {
-    return execSync(cmd, { encoding: 'utf8', timeout: 10000 });
+    return execSync(cmd, { encoding: 'utf8', timeout: 10000, cwd: MEMORY_DIR });
   } catch (err) {
     log(`flashback error: ${err.message}`);
     return '';
