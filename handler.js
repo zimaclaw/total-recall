@@ -2,7 +2,7 @@ import { execSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 
 const LOG = '/tmp/total-recall.log';
-const MEMORY_DIR = '/home/ironman/.openclaw/workspace/skills/memory-reflect';
+const MEMORY_DIR = '/home/ironman/.openclaw/skills/memory-reflect';
 
 function log(msg) {
   writeFileSync(LOG, `[${new Date().toISOString()}] ${msg}\n`, { flag: 'a' });
