@@ -1,0 +1,21 @@
+{
+  "id": "total-recall",
+  "kind": "extension",
+  "uiHints": {
+    "enabled": {
+      "label": "Enabled",
+      "help": "Enable auto flashback before agent starts"
+    }
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "enabled": {
+        "type": "boolean",
+        "default": true
+      }
+    },
+    "required": []
+  }
+}

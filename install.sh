@@ -41,3 +41,11 @@ echo ""
 echo "=== Done. Test with: ==="
 echo "cd $SKILLS_DIR"
 echo "poetry run python memory-reflect.py --flashback --category infra"
+
+# 6. Patch mem0 extraction prompt
+bash scripts/patch-mem0.sh
+echo "✓ mem0 prompt patched"
+
+# 7. Patch index.ts for OSS customInstructions support  
+bash scripts/patch-index.sh
+echo "✓ index.ts patched"

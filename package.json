@@ -1,0 +1,19 @@
+{
+  "name": "total-recall",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Total Recall plugin for OpenClaw - auto flashback before agent starts",
+  "license": "MIT",
+  "main": "index.js",
+  "files": [
+    "index.js",
+    "handler.js",
+    "openclaw.plugin.json",
+    "README.md"
+  ],
+  "openclaw": {
+    "extensions": [
+      "./index.js"
+    ]
+  }
+}

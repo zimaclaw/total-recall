@@ -1,0 +1,25 @@
+[Unit]
+Description=OpenClaw Memory Reflection Daemon
+After=network.target
+# Запускаться после того как Neo4j и Qdrant доступны
+# (если они тоже сервисы — добавить After=neo4j.service)
+
+[Service]
+Type=simple
+User=ironman
+WorkingDirectory=/home/ironman/.openclaw/workspace/skills/memory-reflect
+ExecStart=/home/ironman/.openclaw/workspace/skills/memory-reflect/.venv/bin/python3 memory-daemon.py
+Restart=on-failure
+RestartSec=30
+# Демон не падает сам — но если упал, подождать 30с перед рестартом
+
+# Логи через journald (дополнительно к файловым логам из store.py)
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=openclaw-memory-daemon
+
+# .env должен лежать в WorkingDirectory
+EnvironmentFile=/home/ironman/.openclaw/workspace/skills/memory-reflect/.env
+
+[Install]
+WantedBy=multi-user.target
