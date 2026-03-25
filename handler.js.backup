@@ -10,29 +10,13 @@ function log(msg) {
 
 function inferCategory(prompt) {
   const text = (prompt || '').toLowerCase();
-  
-  // Приоритетные категории — проверяем первыми
-  // Если есть явное упоминание deployment/deploy service — это deploy, не infra
-  const deployPatterns = [
-    /deploy\s+(gateway|service|app|version|new)/,  // "deploy gateway", "deploy new version"
-    /задеплой/,  // русское "задеплой"
-    /deployment/,
-    /release\s+(new|latest|v\d)/,  // "release new", "release v1.0"
-  ];
-  
-  for (const pattern of deployPatterns) {
-    if (pattern.test(text)) {
-      return 'deploy';
-    }
-  }
-  
   const keywords = {
-    infra: ['server', 'docker', 'nginx', 'port', 'network', 'сервер', 'порт', 'systemd', 'nginx', 'reverse', 'proxy'],
+    infra: ['deploy', 'server', 'docker', 'nginx', 'port', 'network', 'сервер', 'порт', 'деплой', 'systemd'],
     dev: ['code', 'script', 'bug', 'fix', 'function', 'git', 'код', 'скрипт', 'баг', 'python', 'node'],
     memory: ['memory', 'remember', 'flashback', 'reflect', 'память', 'вспомни', 'принцип'],
     research: ['research', 'find', 'search', 'analyze', 'исследуй', 'найди', 'поищи'],
     test: ['test', 'check', 'validate', 'verify', 'тест', 'проверь'],
-    deploy: ['deploy', 'release', 'publish', 'деплой', 'релиз', 'deployments', 'ci', 'cd', 'pipeline'],
+    deploy: ['deploy', 'release', 'publish', 'деплой', 'релиз'],
     plan: ['plan', 'schedule', 'roadmap', 'план', 'роадмап'],
     write: ['write', 'document', 'report', 'напиши', 'документ'],
   };
