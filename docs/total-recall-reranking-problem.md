@@ -16,6 +16,8 @@ RERANK_URL=http://192.168.1.145:11435/api/rerank
 RERANK_URL=http://192.168.1.145:11437/api/embeddings
 ```
 
+**Статус:** ✅ Исправлено в .env и config.py
+
 ### 2. Неправильный формат запроса в `_rerank()`
 
 **Текущий код (store.py:1015-1046):**
@@ -35,7 +37,25 @@ resp = requests.post(
 3. Посчитать cosine similarity
 4. Отсортировать по сходству
 
-### 3. Qdrant вектора не индексированы
+**Статус:** ✅ Исправлено в store.py
+
+### 3. Неправильный формат в `_embed()`
+
+**Текущий код:**
+```python
+json={"model": settings.embed_model, "input": text}
+```
+
+**Проблема:** Ollama использует `prompt`, а не `input`.
+
+**Решение:**
+```python
+json={"model": settings.embed_model, "prompt": text}
+```
+
+**Статус:** ✅ Исправлено в store.py
+
+### 4. Qdrant вектора не индексированы
 
 **Статус:**
 ```json
@@ -48,6 +68,8 @@ resp = requests.post(
 **Проблема:** 52 записей в Qdrant, но 0 индексированных векторов для HNSW поиска.
 
 **Решение:** Перезагрузить коллекцию или добавить записи с индексацией.
+
+**Статус:** ❌ Не исправлено — требует решения
 
 ---
 
@@ -113,23 +135,86 @@ curl -X DELETE "http://192.168.1.145:6333/collections/reflections"
 
 ## 📊 Текущий статус
 
-- ✅ bge-m3 работает на 11435 (embeddings)
-- ✅ bge-reranker-v2-m3 работает на 11437 (embeddings)
-- ✅ 52 записей в Qdrant
-- ❌ 0 индексированных векторов
-- ❌ RERANK_URL указывает на несуществующий endpoint
-- ❌ `_rerank()` использует неправильный API формат
+### ✅ Что работает
+
+**Flashback по категории (Neo4j граф):**
+```bash
+$ python3 memory-reflect.py --flashback --category dev
+```
+**Результат:** ✅ Работает! Показывает 9 записей (conclusions, lessons, meta) из Neo4j графа.
+
+**Embedding генерация:**
+```bash
+$ python3 -c "from store import QdrantSearch; q = QdrantSearch(); v = q._embed('test'); print(len(v))"
+Embedding размер: 1024
+```
+**Результат:** ✅ Работает корректно
+
+**Reranking через cosine similarity:**
+- Тест с живыми данными показал корректную работу
+- Relevant документы ранжируются выше (0.9943 vs 0.6751)
+
+### ❌ Что не работает
+
+**Flashback по focus (семантический поиск в Qdrant):**
+```bash
+$ python3 memory-reflect.py --flashback --focus "ollama warmup"
+[flashback · focus='ollama warmup' · category=any]
+  (нет результатов)
+```
+**Причина:** Qdrant не индексирует вектора для HNSW поиска (0 из 52)
+
+### 🔍 Разница между типами flashback
+
+| Тип flashback | Источник | Статус | Причина |
+|---------------|----------|--------|---------|
+| `--flashback --category dev` | Neo4j граф | ✅ Работает | Записи в Neo4j |
+| `--flashback --focus "тема"` | Qdrant вектора | ❌ Не работает | 0 индексированных векторов |
+
+**Flashback по категории:**
+- Чтение из Neo4j графа (Task → Evidence → Conclusion → Lesson → Principle → Meta)
+- Фильтрация по category
+- Возвращает иерархию знаний
+- **Работает корректно** ✅
+
+**Flashback по focus:**
+1. Получает embedding для query через bge-m3
+2. Ищет top-20 в Qdrant (семантический поиск) ← **ПРОБЛЕМА ЗДЕСЬ**
+3. Фильтрует по threshold (0.72 * 0.85 = 0.612)
+4. Rerank через cosine similarity с bge-reranker
+5. Возвращает top-5
+
+**Проблема на шаге 2:** Qdrant не может найти вектора потому что `indexed_vectors_count: 0`
+
+### 🛠️ Исправления в коде
+
+| Файл | Изменение | Статус |
+|------|------------|--------|
+| `.env` | RERANK_URL → 11437/api/embeddings | ✅ |
+| `config.py` | Дефолтные URL обновлены | ✅ |
+| `store.py` | `_embed()` → prompt вместо input | ✅ |
+| `store.py` | `_rerank()` → cosine similarity | ✅ |
+| Qdrant | Индексация векторов | ❌ Требуется решение |
 
 ---
 
 ## 🎯 Ожидаемый результат
 
-После исправлений:
+После исправления Qdrant индексации:
 1. `--flashback --focus "тема"` будет возвращать top-5 релевантных conclusions
 2. Reranking будет работать через cosine similarity с bge-reranker-v2-m3
 3. Qdrant будет индексировать вектора для быстрого поиска
 
 ---
 
+## 📚 Ссылки
+
+- **Полное описание обновления:** `reranking-update-2026-03-26.md`
+- **Использование bge-reranker:** `bge-reranker-usage.md`
+- **Статус исправлений:** `/home/ironman/.openclaw/workspace/docs/total-recall-reranking-fix-status.md`
+
+---
+
 **Создано:** 2026-03-26 20:35 UTC  
-**Статус:** 🔍 Анализ завершён, готово к исправлению
+**Обновлено:** 2026-03-26 21:11 UTC  
+**Статус:** 🔧 Исправления в коде выполнены, требуется решение по Qdrant индексации
