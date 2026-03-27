@@ -323,3 +323,77 @@ curl http://192.168.1.145:11434/api/ps
 **Записано:** 2026-03-27 00:53 UTC (первичная загрузка)  
 **Обновлено:** 2026-03-27 00:57 UTC (128K контекст)  
 **Статус:** ✅ Перезагрузка с 128K контекстом выполнена успешно
+
+---
+
+## Обновление: Тест с KV cache q8_0
+
+**Дата:** 2026-03-27 01:07 UTC
+
+### Цель
+Создать кастомную версию phi4-mini с KV cache q8_0 для уменьшения VRAM overhead при 128K контексте.
+
+### Проблемы
+1. **SSH недоступен** — нельзя создать Modelfile напрямую на сервере
+2. **ollama CLI недоступен** — нельзя использовать `ollama create`
+3. **API ограничение** — параметр `kv_cache_type` не поддерживается в runtime options
+
+### Тест с runtime options
+```bash
+curl http://192.168.1.145:11434/api/generate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "phi4-mini",
+    "prompt": "hi",
+    "stream": false,
+    "keep_alive": -1,
+    "options": {
+      "num_ctx": 131072,
+      "kv_cache_type": "q8_0"
+    }
+  }'
+```
+
+**Результат:**
+```json
+{
+  "model": "phi4-mini",
+  "response": "Hello! How can I assist you today?",
+  "done": true,
+  "load_duration": 507160761  // ~0.5 секунд (модель уже в памяти)
+}
+```
+
+**VRAM после загрузки:**
+- size_vram: 18492243968 (18.49GB) — **нет изменений**
+- context_length: 131072 — **корректно**
+
+**Вывод:** Параметр `kv_cache_type` в runtime options **игнорируется** ollama.
+
+### Решение
+Для применения KV cache q8_0 нужно создать кастомную модель через Modelfile:
+
+```dockerfile
+FROM phi4-mini
+PARAMETER num_ctx 131072
+PARAMETER num_keep 4
+PARAMETER kv_cache_type q8_0
+```
+
+**Требования:**
+1. Доступ к серверу 192.168.1.145 через SSH
+2. Или ollama CLI установлен локально
+3. Или docker exec в ollama контейнер
+
+### Альтернатива
+Использовать phi4-mini с меньшим контекстом (4K-8K) для deployment задач:
+- 4K контекст: 2.89GB VRAM
+- 8K контекст: ~4GB VRAM
+- 128K контекст: 18.49GB VRAM
+
+---
+
+**Записано:** 2026-03-27 00:53 UTC (первичная загрузка)  
+**Обновлено:** 2026-03-27 00:57 UTC (128K контекст)  
+**Обновлено:** 2026-03-27 01:07 UTC (KV q8_0 тест)  
+**Статус:** ⚠️ KV q8_0 требует создания кастомной модели через Modelfile
