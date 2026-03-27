@@ -397,3 +397,131 @@ PARAMETER kv_cache_type q8_0
 **Обновлено:** 2026-03-27 00:57 UTC (128K контекст)  
 **Обновлено:** 2026-03-27 01:07 UTC (KV q8_0 тест)  
 **Статус:** ⚠️ KV q8_0 требует создания кастомной модели через Modelfile
+
+---
+
+## Обновление: phi4-curator найдена и протестирована
+
+**Дата:** 2026-03-27 01:27 UTC
+
+### Поиск модели
+
+**Команда:**
+```bash
+curl -s http://192.168.1.145:11434/api/tags | python3 -c "import sys,json; models=json.load(sys.stdin)['models']; phi4=[m for m in models if 'phi4' in m['name'].lower()]; print(json.dumps(phi4, indent=2))"
+```
+
+**Результат:**
+```json
+[
+  {
+    "name": "phi4-curator:latest",
+    "model": "phi4-curator:latest",
+    "modified_at": "2026-03-27T01:18:45.49135582Z",
+    "size": 2491876880,
+    "digest": "3d957bd8663f98476d93fe5dfb47057d94f5587ec0d55eea91d1feef19d1e68d",
+    "details": {
+      "parameter_size": "3.8B",
+      "quantization_level": "Q4_K_M"
+    }
+  }
+]
+```
+
+✅ **phi4-curator:latest найдена!** Создана сегодня (2026-03-27T01:18:45).
+
+### Параметры модели
+
+**Команда:**
+```bash
+curl -s http://192.168.1.145:11434/api/show -d '{"name":"phi4-curator"}'
+```
+
+**Результат:**
+```
+parameters:
+  num_ctx  131072
+  num_keep 4
+```
+
+✅ **Параметры подтверждены:**
+- num_ctx: 131072 (128K контекст)
+- num_keep: 4
+
+### Тест загрузки
+
+**Команда:**
+```bash
+curl http://192.168.1.145:11434/api/generate \
+  -d '{
+    "model": "phi4-curator",
+    "prompt": "test",
+    "stream": false,
+    "keep_alive": -1
+  }'
+```
+
+**Результат:**
+```json
+{
+  "model": "phi4-curator",
+  "response": "Hello! How can I assist you today?",
+  "done": true,
+  "load_duration": 14970617365  // ~15 секунд
+}
+```
+
+✅ **Загрузка успешна:** ~15 секунд
+
+### VRAM проверка
+
+**Команда:**
+```bash
+curl http://192.168.1.145:11434/api/ps
+```
+
+**Результат:**
+```json
+{
+  "models": [
+    {
+      "name": "phi4-curator:latest",
+      "size": 19663492096,
+      "size_vram": 18492243968,
+      "context_length": 131072
+    }
+  ]
+}
+```
+
+✅ **VRAM подтверждено:**
+- size: 19.66GB
+- size_vram: 18.49GB
+- context_length: 131072
+
+### Выводы
+
+1. ✅ **phi4-curator создана и работает** — модель с 128K контекстом доступна
+2. ✅ **Параметры правильные** — num_ctx: 131072, num_keep: 4
+3. ✅ **VRAM usage: 18.49GB** — соответствует ожиданиям для 128K контекста
+4. ⚠️ **KV q8_0 не применён** — в Modelfile нет параметра kv_cache_type
+
+### Сравнение с phi4-mini
+
+| Параметр | phi4-mini | phi4-curator |
+|----------|-----------|--------------|
+| **Размер** | 2.49GB | 2.49GB |
+| **VRAM (4K)** | 2.89GB | N/A |
+| **VRAM (128K)** | 18.49GB | 18.49GB |
+| **context_length** | 4096 (default) | 131072 (fixed) |
+| **num_keep** | N/A | 4 |
+
+**Вывод:** phi4-curator — это phi4-mini с фиксированным контекстом 128K. VRAM usage одинаковый при загрузке с 128K контекстом.
+
+---
+
+**Записано:** 2026-03-27 00:53 UTC (первичная загрузка)  
+**Обновлено:** 2026-03-27 00:57 UTC (128K контекст)  
+**Обновлено:** 2026-03-27 01:07 UTC (KV q8_0 тест)  
+**Обновлено:** 2026-03-27 01:27 UTC (phi4-curator тест)  
+**Статус:** ✅ phi4-curator найдена, протестирована и работает
