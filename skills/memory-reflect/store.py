@@ -954,9 +954,10 @@ LEVEL_WEIGHTS_ABSTRACT = {
 
 class QdrantSearch:
 
-    def __init__(self, dry_run: bool = False):
+    def __init__(self, dry_run: bool = False, neo4j_store: "Neo4jStore" = None):
         self.dry_run = dry_run
         self._client: Optional[QdrantClient] = None
+        self._neo4j = neo4j_store  # Для поиска abstract (principle/meta)
 
         if not dry_run:
             try:
@@ -1182,11 +1183,33 @@ class QdrantSearch:
             # 6. Берём лучшие concrete
             selected_concrete = concrete_candidates[:concrete_limit]
             
-            # 7. TODO: Добавить поиск abstract из Neo4j
-            # Для этого нужен доступ к Neo4jStore
-            # Пока возвращаем только concrete
+            # 7. Поиск abstract из Neo4j (если доступен)
+            abstract_candidates = []
+            if self._neo4j:
+                # Используем существующий метод flashback() из Neo4jStore
+                # Если category пустой — получаем abstract из всех категорий
+                abstract_results = self._neo4j.flashback(category)
+                
+                # Фильтруем только principle и meta
+                for r in abstract_results:
+                    source = r.get("source_type", "")
+                    if source in ["principle", "meta"]:
+                        abstract_candidates.append({
+                            "text": r.get("insight", ""),
+                            "level": source,
+                            "category": r.get("category", category or "any"),
+                            "confidence": r.get("confidence", 0),
+                            "original_score": r.get("confidence", 0),
+                            "_score": r.get("confidence", 0),  # Используем confidence как score
+                            "source": "neo4j",
+                            "applies_when": r.get("applies_when", ""),
+                        })
             
-            selected = selected_concrete[:limit]
+            # 8. Берём лучшие abstract
+            selected_abstract = abstract_candidates[:abstract_limit]
+            
+            # 9. Объединяем
+            selected = selected_concrete + selected_abstract
             
             if not selected:
                 log.info(f"flashback_focus '{focus[:40]}' → 0 candidates")
@@ -1196,7 +1219,7 @@ class QdrantSearch:
             reranked = self._rerank(focus, selected)[:limit]
             
             log.info(f"flashback_focus '{focus[:40]}' type={query_type} cat={category or 'any'} "
-                     f"concrete={len(concrete_candidates)} abstract=0 (TODO: Neo4j) "
+                     f"concrete={len(concrete_candidates)} abstract={len(abstract_candidates)} "
                      f"→ {len(reranked)} after rerank (balance: {concrete_limit}+{abstract_limit})")
             return reranked
 

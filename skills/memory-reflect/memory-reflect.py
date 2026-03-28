@@ -130,7 +130,7 @@ def main():
     args = parser.parse_args()
 
     neo4j   = Neo4jStore(dry_run=args.dry_run)
-    qdrant  = QdrantSearch(dry_run=args.dry_run)
+    qdrant  = QdrantSearch(dry_run=args.dry_run, neo4j_store=neo4j)
     success = False
 
     try:
