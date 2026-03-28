@@ -108,30 +108,7 @@ REFUTE_WEIGHT = {
     "interpretation": 1.0,
 }
 
-CATEGORY_KEYWORDS: dict[str, list[str]] = {
-    "rules":     ["protocol", "rule", "soul", "principle", "guardrail",
-                  "behavior", "протокол", "правило", "принцип"],
-    "memory":    ["memory", "neo4j", "qdrant", "mem0", "reflection",
-                  "schema", "память", "рефлексия", "схема"],
-    "infra":     ["server", "port", "nginx", "network", "daemon",
-                  "сервер", "порт", "сеть", "сервис"],
-    "deploy":    ["deploy", "restart", "config", "docker", "container",
-                  "systemd", "деплой", "контейнер", "конфиг"],
-    "dev":       ["code", "fork", "branch", "git", "refactor", "bug",
-                  "код", "форк", "ветка", "рефакторинг"],
-    "test":      ["test", "validate", "check", "verify", "debug",
-                  "тест", "проверка", "отладка"],
-    "research":  ["research", "find", "search", "analyze", "compare",
-                  "исследование", "поиск", "анализ"],
-    "knowledge": ["learn", "understand", "concept", "how does",
-                  "изучить", "понять", "концепция"],
-    "write":     ["write", "document", "report", "instruction",
-                  "написать", "документ", "отчёт"],
-    "plan":      ["plan", "roadmap", "backlog", "schedule",
-                  "план", "роадмап", "бэклог"],
-    "user":      ["user", "олег", "напомни", "remind", "personal",
-                  "личный", "пользователь"],
-}
+# CATEGORY_KEYWORDS импортирован из category_config
 
 # ─── Утилиты ──────────────────────────────────────────────────────────────────
 
