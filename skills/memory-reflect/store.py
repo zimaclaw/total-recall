@@ -1180,8 +1180,12 @@ class QdrantSearch:
                 concrete_limit = max(2, int(limit * 0.5))  # Уменьшил до 50%
                 abstract_limit = limit - concrete_limit  # Увеличил до 50%
             
-            # 6. Берём лучшие concrete
-            selected_concrete = concrete_candidates[:concrete_limit]
+            # Берём top 10 из каждого источника для лучшего отбора через rerank
+            QDRANT_TOP_N = 10
+            NEO4J_TOP_N = 10
+            
+            # 6. Берём лучшие concrete (top 10 из Qdrant)
+            selected_concrete = concrete_candidates[:QDRANT_TOP_N]
             
             # 7. Поиск из Neo4j (все уровни: conclusion/lesson/principle/meta)
             neo4j_candidates = []
@@ -1204,8 +1208,8 @@ class QdrantSearch:
                         "applies_when": r.get("applies_when", ""),
                     })
             
-            # 8. Берём лучшие из Neo4j
-            selected_neo4j = neo4j_candidates[:abstract_limit]
+            # 8. Берём лучшие из Neo4j (top 10)
+            selected_neo4j = neo4j_candidates[:NEO4J_TOP_N]
             
             # 9. Объединяем Qdrant + Neo4j
             selected = selected_concrete + selected_neo4j
@@ -1214,13 +1218,20 @@ class QdrantSearch:
                 log.info(f"flashback_focus '{focus[:40]}' → 0 candidates")
                 return []
 
-            # 8. Rerank для уточнения
-            reranked = self._rerank(focus, selected)[:limit]
+            # 8. Rerank только Qdrant результаты (Neo4j уже отсортирован по confidence)
+            reranked_qdrant = self._rerank(focus, selected_concrete)
+            
+            # Объединяем: reranked Qdrant + Neo4j (без rerank)
+            combined = reranked_qdrant + selected_neo4j
+            
+            # Сортируем по score и выбираем топ-N
+            combined.sort(key=lambda x: x.get("_score", 0), reverse=True)
+            final_results = combined[:limit]
             
             log.info(f"flashback_focus '{focus[:40]}' type={query_type} cat={category or 'any'} "
                      f"qdrant={len(concrete_candidates)} neo4j={len(neo4j_candidates)} "
-                     f"→ {len(reranked)} after rerank (balance: {concrete_limit}+{abstract_limit})")
-            return reranked
+                     f"→ {len(final_results)} final (selected: {min(QDRANT_TOP_N, len(concrete_candidates))}+{min(NEO4J_TOP_N, len(neo4j_candidates))})")
+            return final_results
 
         except Exception as e:
             log.warning(f"flashback_focus failed: {e}")
