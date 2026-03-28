@@ -1,0 +1,16 @@
+[tool.poetry]
+name = "reranker-api"
+version = "1.0.1"
+description = "Reranking API using cosine similarity with embeddings"
+authors = ["Oleg <openclaw>"]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+fastapi = "^0.109.0"
+uvicorn = {version = "^0.27.0", extras = ["standard"]}
+httpx = "^0.26.0"
+pydantic = "^2.5.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

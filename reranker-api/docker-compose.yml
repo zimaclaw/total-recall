@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  reranker-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: reranker-api
+    ports:
+      - "8081:8081"
+    environment:
+      - OLLAMA_RERANKER_URL=http://192.168.1.145:11437
+      - RERANKER_API_KEY=change-me-to-secret-key
+      - RERANKER_BATCH_SIZE=5
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    network_mode: host
+    # GPU не требуется — вычисления простые (cosine similarity)
+    # Модель загружается в ollama-reranker контейнере

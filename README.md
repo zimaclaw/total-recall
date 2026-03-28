@@ -17,7 +17,13 @@ total-recall/
 ├── index.js              # Регистрация hook before_agent_start
 ├── handler.js            # Логика: inferCategory → flashback → formatContext
 ├── openclaw.plugin.json  # UI hints и config schema
-└── README.md             # Эта документация
+├── README.md             # Эта документация
+└── reranker-api/         # Dedicated reranking API (опционально)
+    ├── docker-compose.yml
+    ├── Dockerfile
+    ├── pyproject.toml     # Poetry dependencies
+    ├── app.py             # FastAPI приложение
+    └── README.md
 ```
 
 ## Установка
@@ -111,3 +117,79 @@ tail -f /tmp/total-recall.log
 [2026-03-25T21:30:00.000Z] category=infra prompt="как настроить nginx reverse proxy"
 [2026-03-25T21:30:01.500Z] injected 523 chars
 ```
+
+---
+
+## Reranker API (опционально)
+
+### Исследование: почему bge-reranker-v2-m3 не работает в Ollama
+
+**Проблема:**
+- Ollama 0.17.6 не имеет `/api/rerank` endpoint
+- Модель `bge-reranker-v2-m3` через `/api/generate` работает как генератор текста, а не как reranker
+- PR #14172 "Add reranking support" ещё не merged в main branch
+
+**Причина:**
+- `bge-reranker-v2-m3` — это **encoder-only (BERT-based) sequence classifier**
+- Принимает пару (query, document) и выводит **relevance score (логит)**
+- Ollama пытается использовать модель как **decoder-only LLM** (next-token prediction)
+- Нет endpoint для получения logits из `cls.output` слоя
+
+**Текущее решение:**
+- `store.py` использует **cosine similarity** с embeddings
+- Это рабочее решение, но менее точное чем cross-encoder
+- Cross-encoder обрабатывает query и passage вместе, понимает контекст
+
+### Reranker API проект
+
+**Цель:** Dedicated API сервис для reranking через cosine similarity
+
+**Архитектура:**
+```
+memory-reflect (store.py)
+  ↓ вызывает (опционально)
+reranker-api (192.168.1.164:8081)
+  ↓ вызывает
+ollama-reranker (192.168.1.145:11437)
+  └─ bge-reranker-v2-m3:latest
+```
+
+**Запуск:**
+```bash
+cd /home/ironman/projects/total-recall/reranker-api
+docker-compose up --build
+```
+
+**API Contract:**
+```bash
+# Запрос
+curl -X POST http://localhost:8081/rerank \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "what is panda?",
+    "candidates": [
+      {"text": "hi", "id": "conclusion_456", "category": "infra"},
+      {"text": "The giant panda is a bear species", "id": "conclusion_123", "category": "test"}
+    ]
+  }'
+
+# Ответ
+{
+  "model": "xitao/bge-reranker-v2-m3:latest (cosine similarity)",
+  "results": [
+    {"text": "The giant panda is a bear species", "id": "conclusion_123", "category": "test", "timestamp": 1703275200, "relevance_score": 0.85},
+    {"text": "hi", "id": "conclusion_456", "category": "infra", "timestamp": 1703260800, "relevance_score": 0.12}
+  ]
+}
+```
+
+**Важно:** API принимает полные объекты candidates с metadata, а не только текст.
+
+**Конфигурация:**
+```bash
+# .env в memory-reflect
+RERANKER_API_URL=  # пустой = использовать локальный cosine similarity
+# Или: RERANKER_API_URL=http://192.168.1.164:8081/rerank
+```
+
+**Подробнее:** см. `/home/ironman/projects/total-recall/reranker-api/README.md`
