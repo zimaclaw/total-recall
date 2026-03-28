@@ -58,6 +58,18 @@ CATEGORY_KEYWORDS = {
         "деплой", "развёртывание", "сервер", "production", "git", "push",
         "commit", "branch", "merge"
     ],
+    "rules": [
+        "protocol", "rule", "soul", "principle", "guardrail",
+        "behavior", "протокол", "правило", "принцип"
+    ],
+    "knowledge": [
+        "learn", "understand", "concept", "how does",
+        "изучить", "понять", "концепция"
+    ],
+    "user": [
+        "user", "олег", "напомни", "remind", "personal",
+        "личный", "пользователь"
+    ],
 }
 
 # Веса для разных уровней памяти
