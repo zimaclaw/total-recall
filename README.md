@@ -192,4 +192,89 @@ RERANKER_API_URL=  # пустой = использовать локальный 
 # Или: RERANKER_API_URL=http://192.168.1.164:8081/rerank
 ```
 
+---
+
+## 🧠 Архитектура памяти (Memory Stack)
+
+**Важно:** Два разных типа данных в двух разных хранилищах:
+
+### **Neo4j (графовая база)**
+
+Хранит **иерархию знаний**:
+```
+Conclusion (concrete facts)
+  ↓ generalizes_to
+Lesson (обобщённые уроки)
+  ↓ abstracted_to
+Principle (универсальные принципы)
+  ↓ abstracted_to
+Meta (метапринципы)
+```
+
+**Что хранится:**
+- ✅ Conclusion, Lesson, Principle, Meta (все уровни)
+- ✅ Графовые связи между уровнями
+- ✅ Байесовское обновление confidence
+- ✅ История применения уроков
+
+**Для чего:**
+- Рефлексия (Lesson → Principle → Meta)
+- Навигация по иерархии знаний
+- Отслеживание связей между концепциями
+
+---
+
+### **Qdrant (векторная база)**
+
+Хранит **только concrete данные** для семантического поиска:
+```
+Conclusion (с embeddings)
+Lesson (с embeddings, опционально)
+```
+
+**Что хранится:**
+- ✅ Conclusion с векторными embeddings
+- ⚠️ Lesson (опционально, через process_dump)
+- ❌ Principle (НЕ хранятся!)
+- ❌ Meta (НЕ хранятся!)
+
+**Для чего:**
+- Семантический поиск по тексту
+- Flashback по query (конкретные вопросы)
+- Reranking через cosine similarity
+
+---
+
+### **Почему разделение?**
+
+1. **Principle/Meta не нужны в векторном поиске** — они абстрактные, не содержат конкретных фактов
+2. **Граф важнее для абстракций** — иерархия Principle → Meta лучше представляется в Neo4j
+3. **Concrete данные нужны для поиска** — conclusion содержат конкретные факты, которые можно найти через embeddings
+
+---
+
+### **Flashback с двумя источниками**
+
+```python
+def flashback_focus(query, category, limit):
+    # 1. Concrete из Qdrant (векторный поиск)
+    concrete = search_qdrant(query, category, levels=["conclusion", "lesson"])
+    
+    # 2. Abstract из Neo4j (категорийный поиск) — TODO
+    abstract = search_neo4j(category, levels=["principle", "meta"])
+    
+    # 3. Комбинация с балансом 60/40
+    return combine(concrete[:3], abstract[:2])
+```
+
+**Текущая реализация (v1.0.2):**
+- ✅ Concrete из Qdrant (векторный поиск conclusion/lesson)
+- ✅ Классификация query (concrete vs abstract)
+- ✅ Критик для анализа релевантности
+- ⏳ Abstract из Neo4j — TODO (требует интеграции Neo4jStore + QdrantSearch)
+
+**Пример:**
+- Query: "порт 8080 занят" → concrete (conclusion про порты)
+- Query: "как принимать решения" → abstract (principle/meta про решения) — TODO
+
 **Подробнее:** см. `/home/ironman/projects/total-recall/reranker-api/README.md`

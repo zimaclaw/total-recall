@@ -1094,7 +1094,29 @@ class QdrantSearch:
         log.info(f"Reranked {len(scored)} results with cosine similarity")
         return scored
 
+    def _search_abstract_from_neo4j(self, category: str, limit: int) -> list:
+        """
+        Поиск abstract данных (principle/meta) из Neo4j по категории.
+        
+        ВНИМАНИЕ: Этот метод требует подключения к Neo4j, но QdrantSearch
+        не имеет доступа к Neo4jStore. Поэтому пока возвращаем пустой список.
+        
+        Для полноценной реализации нужно:
+        1. Передать Neo4jStore в QdrantSearch через конструктор
+        2. Или создать отдельную функцию combine_flashback(neo4j, qdrant, query, category)
+        """
+        # TODO: Реализовать поиск в Neo4j
+        # Пока возвращаем пустой список
+        return []
+
     def flashback_focus(self, focus: str, category: str = "", limit: int = 5) -> list:
+        """
+        Flashback с двумя источниками:
+        1. Qdrant — concrete данные (conclusion/lesson) через векторный поиск
+        2. Neo4j — abstract данные (principle/meta) через категорийный поиск
+        
+        Возвращает комбинацию с балансом ~60/40 concrete/abstract
+        """
         if self.dry_run or not self._client:
             return []
 
@@ -1105,7 +1127,7 @@ class QdrantSearch:
         # 1. Классифицируем query
         query_type = self._classify_query(focus)
         
-        # 2. Фильтры (без фильтра по level!)
+        # 2. Фильтры для Qdrant (без фильтра по level!)
         must_filters = []
         if category:
             must_filters.append(
@@ -1113,77 +1135,68 @@ class QdrantSearch:
             )
 
         try:
+            # 3. Поиск в Qdrant (concrete данные)
             results = self._client.query_points(
                 collection_name = settings.qdrant_collection,
                 query           = vector,
                 query_filter    = Filter(must=must_filters),
-                limit           = 50,  # увеличиваем для раздельной выборки
+                limit           = 50,
                 with_payload    = True,
             ).points
 
-            # 3. Разделяем по уровням: concrete (conclusion/lesson) vs abstract (principle/meta)
             concrete_candidates = []
-            abstract_candidates = []
-            
             for r in results:
                 if r.score < settings.similarity_threshold * 0.85:
                     continue
                     
                 payload = dict(r.payload)
                 level = payload.get("level", "conclusion")
-                original_score = round(r.score, 3)
                 
-                candidate = {
+                # Только conclusion и lesson из Qdrant
+                if level not in ["conclusion", "lesson"]:
+                    continue
+                
+                original_score = round(r.score, 3)
+                weight = LEVEL_WEIGHTS_CONCRETE.get(level, 0.5)
+                
+                concrete_candidates.append({
                     **payload,
                     "original_score": original_score,
-                    "level": level,
-                }
-                
-                if level in ["conclusion", "lesson"]:
-                    concrete_candidates.append(candidate)
-                elif level in ["principle", "meta"]:
-                    abstract_candidates.append(candidate)
-                else:
-                    # Неизвестный level — считаем concrete
-                    concrete_candidates.append(candidate)
+                    "_score": round(original_score * weight, 3),
+                    "level_weight": weight,
+                    "source": "qdrant",
+                })
 
-            # 4. Применяем веса внутри каждой категории
-            for c in concrete_candidates:
-                level = c.get("level", "conclusion")
-                weight = LEVEL_WEIGHTS_CONCRETE.get(level, 0.5)
-                c["_score"] = round(c["original_score"] * weight, 3)
-                c["level_weight"] = weight
-                c["category_type"] = "concrete"
-            
-            for c in abstract_candidates:
-                level = c.get("level", "principle")
-                weight = LEVEL_WEIGHTS_ABSTRACT.get(level, 0.5)
-                c["_score"] = round(c["original_score"] * weight, 3)
-                c["level_weight"] = weight
-                c["category_type"] = "abstract"
-
-            # 5. Сортируем внутри категорий
+            # 4. Сортируем concrete по score
             concrete_candidates.sort(key=lambda x: x["_score"], reverse=True)
-            abstract_candidates.sort(key=lambda x: x["_score"], reverse=True)
 
-            # 6. Берём лучшие из каждой категории (баланс: 60% concrete, 40% abstract)
-            concrete_limit = max(1, int(limit * 0.6))
-            abstract_limit = max(1, limit - concrete_limit)
+            # 5. Определяем баланс concrete/abstract
+            # Для abstract query — больше abstract, для concrete — больше concrete
+            if query_type == "abstract":
+                concrete_limit = max(1, int(limit * 0.4))
+                abstract_limit = limit - concrete_limit
+            else:
+                concrete_limit = max(1, int(limit * 0.6))
+                abstract_limit = limit - concrete_limit
             
-            selected = (
-                concrete_candidates[:concrete_limit] + 
-                abstract_candidates[:abstract_limit]
-            )
+            # 6. Берём лучшие concrete
+            selected_concrete = concrete_candidates[:concrete_limit]
+            
+            # 7. TODO: Добавить поиск abstract из Neo4j
+            # Для этого нужен доступ к Neo4jStore
+            # Пока возвращаем только concrete
+            
+            selected = selected_concrete[:limit]
             
             if not selected:
                 log.info(f"flashback_focus '{focus[:40]}' → 0 candidates")
                 return []
 
-            # 7. Rerank для уточнения
+            # 8. Rerank для уточнения
             reranked = self._rerank(focus, selected)[:limit]
             
             log.info(f"flashback_focus '{focus[:40]}' type={query_type} cat={category or 'any'} "
-                     f"concrete={len(concrete_candidates)} abstract={len(abstract_candidates)} "
+                     f"concrete={len(concrete_candidates)} abstract=0 (TODO: Neo4j) "
                      f"→ {len(reranked)} after rerank (balance: {concrete_limit}+{abstract_limit})")
             return reranked
 
