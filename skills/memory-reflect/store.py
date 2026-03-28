@@ -1110,7 +1110,7 @@ class QdrantSearch:
         # Пока возвращаем пустой список
         return []
 
-    def flashback_focus(self, focus: str, category: str = "", limit: int = 5) -> list:
+    def flashback_focus(self, focus: str, category: str = "", limit: int = 20) -> list:
         """
         Flashback с двумя источниками:
         1. Qdrant — concrete данные (conclusion/lesson) через векторный поиск
@@ -1218,13 +1218,23 @@ class QdrantSearch:
                 log.info(f"flashback_focus '{focus[:40]}' → 0 candidates")
                 return []
 
-            # 8. Rerank только Qdrant результаты (Neo4j уже отсортирован по confidence)
+            # 10. Rerank только Qdrant результаты (Neo4j уже отсортирован по confidence)
             reranked_qdrant = self._rerank(focus, selected_concrete)
             
-            # Объединяем: reranked Qdrant + Neo4j (без rerank)
+            # 11. Нормализация Qdrant результатов если есть score > 0.51
+            qdrant_scores = [r.get("_score", 0) for r in reranked_qdrant]
+            if qdrant_scores and max(qdrant_scores) > 0.51:
+                max_score = max(qdrant_scores)
+                for r in reranked_qdrant:
+                    original = r.get("_score", 0)
+                    r["_score"] = original / max_score  # Нормализация к [0, 1]
+                    r["normalized"] = True
+                log.info(f"Нормализация Qdrant: max={max_score:.3f} → 1.0")
+            
+            # 12. Объединяем: reranked Qdrant + Neo4j (без rerank)
             combined = reranked_qdrant + selected_neo4j
             
-            # Сортируем по score и выбираем топ-N
+            # 13. Сортируем по score и выбираем топ-N (до 20)
             combined.sort(key=lambda x: x.get("_score", 0), reverse=True)
             final_results = combined[:limit]
             
