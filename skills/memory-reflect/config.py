@@ -29,10 +29,12 @@ class Settings(BaseSettings):
     similarity_threshold: float = 0.72
 
     # ─── Embeddings & Reranker ────────────────────────────────────────────────
-    embed_url:    str = "http://localhost:11435/api/embed"
+    embed_url:    str = "http://localhost:11435/api/embeddings"
     embed_model:  str = "bge-m3:latest"
-    rerank_url:   str = "http://localhost:11435/api/rerank"
+    rerank_url:   str = "http://localhost:11437/api/embeddings"  # ollama-reranker (embeddings)
     rerank_model: str = "xitao/bge-reranker-v2-m3:latest"
+    reranker_api_url: str = ""  # dedicated reranker API (опционально, по умолчанию пустой = cosine similarity)
+    # Пример: "http://192.168.1.164:8081/rerank"
 
     # ─── LLM для рефлексии ────────────────────────────────────────────────────
     ollama_url:    str = "http://localhost:11434/api/chat"

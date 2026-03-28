@@ -470,6 +470,9 @@ class Neo4jStore:
         # Инкремент счётчика для триггера рефлексии
         self._increment_reflection_counter()
 
+        # Проверка на создание Lesson
+        self._check_lesson(conclusion_id)
+
         log.info(f"Conclusion: {conclusion_id} conf={prior:.2f} "
                  f"type={evidence_type} decay={decay_rate:.6f}")
         return conclusion_id
@@ -933,6 +936,22 @@ class Neo4jStore:
 
 # ─── QdrantSearch ─────────────────────────────────────────────────────────────
 
+# Весa для уровней памяти по типу query
+LEVEL_WEIGHTS_CONCRETE = {
+    "conclusion": 1.0,  # конкретные факты — максимальный вес
+    "lesson": 0.8,      # уроки — высокий вес
+    "principle": 0.6,   # принципы — средний вес
+    "meta": 0.4         # метапринципы — низкий вес
+}
+
+LEVEL_WEIGHTS_ABSTRACT = {
+    "conclusion": 0.4,  # конкретные факты — низкий вес
+    "lesson": 0.6,      # уроки — средний вес
+    "principle": 0.8,   # принципы — высокий вес
+    "meta": 1.0         # метапринципы — максимальный вес
+}
+
+
 class QdrantSearch:
 
     def __init__(self, dry_run: bool = False):
@@ -951,6 +970,32 @@ class QdrantSearch:
             except Exception as e:
                 log.warning(f"Qdrant init failed: {e}. Running without semantic search.")
 
+    def _classify_query(self, query: str) -> str:
+        """
+        Определяем тип query:
+        - concrete = конкретный технический вопрос (порт, конфиг, ошибка)
+        - abstract = абстрактный вопрос (принципы, решения, подходы)
+        """
+        concrete_keywords = [
+            "порт", "ошибка", "баг", "не работает", "как настроить",
+            "конфиг", "файл", "команда", "скрипт", "docker", "nginx",
+            "ollama", "endpoint", "api", "path", "directory", "бэкап",
+            "research", "субагент", "пустые ответы", "таймаут"
+        ]
+        
+        abstract_keywords = [
+            "как принимать", "принципы", "подход", "стратегия",
+            "эффективно", "лучше", "правила", "методология",
+            "решения", "неопределённости", "качества", "ассистентка"
+        ]
+        
+        query_lower = query.lower()
+        
+        concrete_score = sum(1 for kw in concrete_keywords if kw in query_lower)
+        abstract_score = sum(1 for kw in abstract_keywords if kw in query_lower)
+        
+        return "abstract" if abstract_score > concrete_score else "concrete"
+
     def _ensure_collection(self):
         existing = [c.name for c in self._client.get_collections().collections]
         if settings.qdrant_collection not in existing:
@@ -964,14 +1009,11 @@ class QdrantSearch:
         def _call():
             resp = requests.post(
                 settings.embed_url,
-                json={"model": settings.embed_model, "input": text},
+                json={"model": settings.embed_model, "prompt": text},
                 timeout=30,
             )
             resp.raise_for_status()
             data       = resp.json()
-            embeddings = data.get("embeddings", [])
-            if embeddings:
-                return embeddings[0]
             return data.get("embedding", [])
 
         try:
@@ -1010,37 +1052,47 @@ class QdrantSearch:
             return ""
 
     def _rerank(self, query: str, candidates: list[dict]) -> list[dict]:
+        """
+        Rerank кандидатов через cosine similarity с embeddings.
+        Использует Ollama embeddings API (не specialized reranker).
+        """
         if not candidates:
             return candidates
 
-        docs = [c.get("text", "") for c in candidates]
-        try:
-            resp = requests.post(
-                settings.rerank_url,
-                json={"model": settings.rerank_model, "query": query, "documents": docs},
-                timeout=15,
-            )
-            resp.raise_for_status()
-            data    = resp.json()
-            results = data.get("results", [])
-            if not results:
-                return candidates
-
-            scored = []
-            for r in results:
-                idx = r.get("index", 0)
-                if idx < len(candidates):
-                    payload          = dict(candidates[idx])
-                    payload["_score"] = round(r.get("relevance_score", 0.0), 3)
-                    scored.append(payload)
-
-            scored.sort(key=lambda x: x["_score"], reverse=True)
-            log.info(f"Reranked {len(scored)} results")
-            return scored
-
-        except Exception as e:
-            log.warning(f"Rerank failed (fallback to vector scores): {e}")
+        # Получить embedding для query
+        query_embedding = self._embed(query)
+        if not query_embedding:
+            log.warning("Rerank failed: couldn't get query embedding")
             return candidates
+
+        # Cosine similarity функция
+        def cosine_similarity(a, b):
+            from math import sqrt
+            dot = sum(x * y for x, y in zip(a, b))
+            norm_a = sqrt(sum(x * x for x in a))
+            norm_b = sqrt(sum(x * x for x in b))
+            if norm_a == 0 or norm_b == 0:
+                return 0.0
+            return dot / (norm_a * norm_b)
+
+        # Получить embeddings для всех кандидатов и посчитать сходство
+        scored = []
+        for candidate in candidates:
+            text = candidate.get("text", "")
+            if not text:
+                continue
+            
+            doc_embedding = self._embed(text)
+            if doc_embedding:
+                score = cosine_similarity(query_embedding, doc_embedding)
+                payload = dict(candidate)
+                payload["_score"] = round(score, 3)
+                scored.append(payload)
+
+        # Сортировка по убыванию сходства
+        scored.sort(key=lambda x: x["_score"], reverse=True)
+        log.info(f"Reranked {len(scored)} results with cosine similarity")
+        return scored
 
     def flashback_focus(self, focus: str, category: str = "", limit: int = 5) -> list:
         if self.dry_run or not self._client:
@@ -1050,9 +1102,11 @@ class QdrantSearch:
         if not vector:
             return []
 
-        must_filters = [
-            FieldCondition(key="level", match=MatchValue(value="conclusion")),
-        ]
+        # 1. Классифицируем query
+        query_type = self._classify_query(focus)
+        
+        # 2. Фильтры (без фильтра по level!)
+        must_filters = []
         if category:
             must_filters.append(
                 FieldCondition(key="category", match=MatchValue(value=category))
@@ -1063,29 +1117,184 @@ class QdrantSearch:
                 collection_name = settings.qdrant_collection,
                 query           = vector,
                 query_filter    = Filter(must=must_filters),
-                limit           = 20,
+                limit           = 50,  # увеличиваем для раздельной выборки
                 with_payload    = True,
             ).points
 
-            candidates = []
+            # 3. Разделяем по уровням: concrete (conclusion/lesson) vs abstract (principle/meta)
+            concrete_candidates = []
+            abstract_candidates = []
+            
             for r in results:
-                if r.score >= settings.similarity_threshold * 0.85:
-                    payload          = dict(r.payload)
-                    payload["_score"] = round(r.score, 3)
-                    candidates.append(payload)
+                if r.score < settings.similarity_threshold * 0.85:
+                    continue
+                    
+                payload = dict(r.payload)
+                level = payload.get("level", "conclusion")
+                original_score = round(r.score, 3)
+                
+                candidate = {
+                    **payload,
+                    "original_score": original_score,
+                    "level": level,
+                }
+                
+                if level in ["conclusion", "lesson"]:
+                    concrete_candidates.append(candidate)
+                elif level in ["principle", "meta"]:
+                    abstract_candidates.append(candidate)
+                else:
+                    # Неизвестный level — считаем concrete
+                    concrete_candidates.append(candidate)
 
-            if not candidates:
+            # 4. Применяем веса внутри каждой категории
+            for c in concrete_candidates:
+                level = c.get("level", "conclusion")
+                weight = LEVEL_WEIGHTS_CONCRETE.get(level, 0.5)
+                c["_score"] = round(c["original_score"] * weight, 3)
+                c["level_weight"] = weight
+                c["category_type"] = "concrete"
+            
+            for c in abstract_candidates:
+                level = c.get("level", "principle")
+                weight = LEVEL_WEIGHTS_ABSTRACT.get(level, 0.5)
+                c["_score"] = round(c["original_score"] * weight, 3)
+                c["level_weight"] = weight
+                c["category_type"] = "abstract"
+
+            # 5. Сортируем внутри категорий
+            concrete_candidates.sort(key=lambda x: x["_score"], reverse=True)
+            abstract_candidates.sort(key=lambda x: x["_score"], reverse=True)
+
+            # 6. Берём лучшие из каждой категории (баланс: 60% concrete, 40% abstract)
+            concrete_limit = max(1, int(limit * 0.6))
+            abstract_limit = max(1, limit - concrete_limit)
+            
+            selected = (
+                concrete_candidates[:concrete_limit] + 
+                abstract_candidates[:abstract_limit]
+            )
+            
+            if not selected:
                 log.info(f"flashback_focus '{focus[:40]}' → 0 candidates")
                 return []
 
-            reranked = self._rerank(focus, candidates)[:limit]
-            log.info(f"flashback_focus '{focus[:40]}' cat={category or 'any'} "
-                     f"candidates={len(candidates)} → {len(reranked)} after rerank")
+            # 7. Rerank для уточнения
+            reranked = self._rerank(focus, selected)[:limit]
+            
+            log.info(f"flashback_focus '{focus[:40]}' type={query_type} cat={category or 'any'} "
+                     f"concrete={len(concrete_candidates)} abstract={len(abstract_candidates)} "
+                     f"→ {len(reranked)} after rerank (balance: {concrete_limit}+{abstract_limit})")
             return reranked
 
         except Exception as e:
             log.warning(f"flashback_focus failed: {e}")
             return []
+
+    def critique_results(self, focus: str, results: list) -> dict:
+        """
+        Критик — анализ релевантности результатов flashback
+        
+        Возвращает:
+        {
+            "summary": "краткий анализ",
+            "strengths": ["сильные стороны"],
+            "weaknesses": ["слабые стороны"],
+            "recommendations": ["предложения по улучшению"],
+            "relevance_score": 0.0-1.0,
+            "coverage": {
+                "concrete": count,
+                "abstract": count,
+                "total": count
+            }
+        }
+        """
+        if not results:
+            return {
+                "summary": "Нет результатов для анализа",
+                "strengths": [],
+                "weaknesses": ["Пустой результат flashback"],
+                "recommendations": ["Проверить наличие данных в базе", "Увеличить threshold"],
+                "relevance_score": 0.0,
+                "coverage": {"concrete": 0, "abstract": 0, "total": 0}
+            }
+        
+        # Анализ coverage
+        concrete_count = sum(1 for r in results if r.get("level") in ["conclusion", "lesson"])
+        abstract_count = sum(1 for r in results if r.get("level") in ["principle", "meta"])
+        total = len(results)
+        
+        # Анализ scores
+        scores = [r.get("_score", 0) for r in results]
+        avg_score = sum(scores) / len(scores) if scores else 0
+        max_score = max(scores) if scores else 0
+        min_score = min(scores) if scores else 0
+        
+        # Анализ original_score vs rerank score (delta)
+        deltas = []
+        for r in results:
+            original = r.get("original_score", 0)
+            reranked = r.get("_score", 0)
+            deltas.append(reranked - original)
+        
+        avg_delta = sum(deltas) / len(deltas) if deltas else 0
+        
+        # Сильные стороны
+        strengths = []
+        if avg_score > 0.5:
+            strengths.append("Высокий средний score ({:.2f})".format(avg_score))
+        if concrete_count > 0 and abstract_count > 0:
+            strengths.append("Хороший баланс concrete/abstract ({}/{}".format(concrete_count, abstract_count))
+        if max_score > 0.7:
+            strengths.append("Есть очень релевантные результаты (max={:.2f})".format(max_score))
+        
+        # Слабые стороны
+        weaknesses = []
+        if avg_score < 0.4:
+            weaknesses.append("Низкий средний score ({:.2f})".format(avg_score))
+        if concrete_count == 0:
+            weaknesses.append("Нет concrete результатов (conclusion/lesson)")
+        if abstract_count == 0:
+            weaknesses.append("Нет abstract результатов (principle/meta)")
+        if max_score < 0.5:
+            weaknesses.append("Нет высоко релевантных результатов (max={:.2f})".format(max_score))
+        if avg_delta < -0.1:
+            weaknesses.append("Rerank снижает релевантность (avg_delta={:.2f})".format(avg_delta))
+        
+        # Рекомендации
+        recommendations = []
+        if avg_score < 0.4:
+            recommendations.append("Заполнить базу релевантными данными")
+        if concrete_count == 0:
+            recommendations.append("Добавить conclusion/lesson в базу")
+        if abstract_count == 0:
+            recommendations.append("Добавить principle/meta через рефлексию")
+        if max_score < 0.5:
+            recommendations.append("Проверить качество embeddings (bge-m3)")
+        if avg_delta < -0.1:
+            recommendations.append("Rerank ухудшает результаты — проверить cosine similarity")
+        
+        # Оценка релевантности (0.0-1.0)
+        relevance_score = min(1.0, avg_score * 1.5)  # нормализация
+        
+        return {
+            "summary": f"Анализ {total} результатов: avg_score={avg_score:.2f}, concrete={concrete_count}, abstract={abstract_count}",
+            "strengths": strengths if strengths else ["Нет выраженных сильных сторон"],
+            "weaknesses": weaknesses if weaknesses else ["Нет критических проблем"],
+            "recommendations": recommendations if recommendations else ["Продолжить работу"],
+            "relevance_score": round(relevance_score, 3),
+            "coverage": {
+                "concrete": concrete_count,
+                "abstract": abstract_count,
+                "total": total
+            },
+            "metrics": {
+                "avg_score": round(avg_score, 3),
+                "max_score": round(max_score, 3),
+                "min_score": round(min_score, 3),
+                "avg_delta": round(avg_delta, 3)
+            }
+        }
 
     def find_similar(self, insight: str, category: str) -> Optional[dict]:
         if self.dry_run or not self._client:

@@ -117,6 +117,8 @@ def main():
                         help="Инициализировать схему Neo4j")
     parser.add_argument("--flashback",   action="store_true",
                         help="Показать релевантный опыт")
+    parser.add_argument("--critique",    action="store_true",
+                        help="Анализировать релевантность результатов (Критик)")
     parser.add_argument("--category",    default="",
                         help="Фильтр по категории")
     parser.add_argument("--focus",       default="",
@@ -150,6 +152,39 @@ def main():
             if args.focus:
                 results = qdrant.flashback_focus(args.focus, args.category)
                 _print_flashback_focus(results, args.focus, args.category)
+                
+                # Если запрошен critique — анализируем результаты
+                if args.critique:
+                    print("\n" + "="*80)
+                    print("🔍 КРИТИК — Анализ релевантности")
+                    print("="*80 + "\n")
+                    
+                    critique = qdrant.critique_results(args.focus, results)
+                    
+                    print(f"📊 Summary: {critique['summary']}")
+                    print(f"🎯 Relevance Score: {critique['relevance_score']:.2f}/1.0")
+                    print()
+                    
+                    print("💪 Strengths:")
+                    for s in critique['strengths']:
+                        print(f"   ✅ {s}")
+                    print()
+                    
+                    print("⚠️  Weaknesses:")
+                    for w in critique['weaknesses']:
+                        print(f"   ❌ {w}")
+                    print()
+                    
+                    print("💡 Recommendations:")
+                    for r in critique['recommendations']:
+                        print(f"   🔧 {r}")
+                    print()
+                    
+                    print("📈 Metrics:")
+                    print(f"   Coverage: concrete={critique['coverage']['concrete']}, abstract={critique['coverage']['abstract']}, total={critique['coverage']['total']}")
+                    print(f"   Scores: avg={critique['metrics']['avg_score']:.3f}, max={critique['metrics']['max_score']:.3f}, min={critique['metrics']['min_score']:.3f}")
+                    print(f"   Delta (rerank vs original): {critique['metrics']['avg_delta']:.3f}")
+                    print()
             else:
                 category = args.category or "dev"
                 results  = neo4j.flashback(category)
