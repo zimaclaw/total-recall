@@ -997,6 +997,53 @@ class QdrantSearch:
         
         return "abstract" if abstract_score > concrete_score else "concrete"
 
+    def _infer_category_from_query(self, query: str) -> str:
+        """
+        Автоматически определяем категорию из текста запроса.
+        
+        Возвращает: infra, dev, research, memory, test, write, plan, deploy, user, knowledge
+        """
+        query_lower = query.lower()
+        
+        # Категории и ключевые слова
+        category_keywords = {
+            "infra": ["порт", "endpoint", "ollama", "nginx", "docker", "сеть", "сервер", 
+                      "конфиг", "файл", "путь", "directory", "path", "бэкап", "backup",
+                      "ss -tlnp", "reload", "сохранять", "состояние"],
+            "dev": ["код", "ошибка", "баг", "debug", "тест", "test", "скрипт", "функция",
+                    "метод", "класс", "модуль", "библиотека", "импорт", "экспорт",
+                    "research", "субагент", "пустые ответы", "hook", "prompt"],
+            "research": ["исследование", "изучение", "документация", "анализ", "понимать",
+                        "структура", "архитектура", "как принимать решения", "неопределённость"],
+            "memory": ["память", "flashback", "категория", "уровень", "principle", "meta",
+                      "lesson", "conclusion", "рефлексия", "запомнить", "принципы ассистентки",
+                      "эффективная ассистентка", "быть ассистенткой", "помогать ассистенткой",
+                      "принципы", "эффективной", "ассистенткой"],
+            "test": ["проверить", "тест", "валидация", "healthcheck", "стабильность",
+                    "threshold", "ошибки", "лог", "логирование"],
+            "write": ["написать", "документ", "текст", "обсуждение", "вопрос", "ответ",
+                     "итеративный", "обновлять"],
+            "plan": ["план", "планирование", "шаг", "действие", "задача", "декомпозиция"],
+            "deploy": ["деплой", "развёртывание", "сервер", "production", "git", "push",
+                      "commit", "branch", "merge"],
+        }
+        
+        # Считаем совпадения для каждой категории
+        scores = {}
+        for category, keywords in category_keywords.items():
+            score = sum(1 for kw in keywords if kw in query_lower)
+            scores[category] = score
+        
+        # Возвращаем категорию с максимальным score
+        best_category = max(scores, key=scores.get)
+        
+        # Если нет совпадений — возвращаем пустую строку (поиск по всем категориям)
+        if scores[best_category] == 0:
+            return ""
+        
+        log.info(f"Автоопределение категории: '{query[:40]}...' → {best_category} (score={scores[best_category]})")
+        return best_category
+
     def _ensure_collection(self):
         existing = [c.name for c in self._client.get_collections().collections]
         if settings.qdrant_collection not in existing:
@@ -1128,7 +1175,12 @@ class QdrantSearch:
         # 1. Классифицируем query
         query_type = self._classify_query(focus)
         
-        # 2. Фильтры для Qdrant (без фильтра по level!)
+        # 2. Автоопределение категории если не указана
+        if not category:
+            category = self._infer_category_from_query(focus)
+            log.info(f"Использована автоопределённая категория: {category}")
+        
+        # 3. Фильтры для Qdrant (без фильтра по level!)
         must_filters = []
         if category:
             must_filters.append(
@@ -1136,7 +1188,7 @@ class QdrantSearch:
             )
 
         try:
-            # 3. Поиск в Qdrant (concrete данные)
+            # 4. Поиск в Qdrant (concrete данные)
             results = self._client.query_points(
                 collection_name = settings.qdrant_collection,
                 query           = vector,
@@ -1221,20 +1273,10 @@ class QdrantSearch:
             # 10. Rerank только Qdrant результаты (Neo4j уже отсортирован по confidence)
             reranked_qdrant = self._rerank(focus, selected_concrete)
             
-            # 11. Нормализация Qdrant результатов если есть score > 0.51
-            qdrant_scores = [r.get("_score", 0) for r in reranked_qdrant]
-            if qdrant_scores and max(qdrant_scores) > 0.51:
-                max_score = max(qdrant_scores)
-                for r in reranked_qdrant:
-                    original = r.get("_score", 0)
-                    r["_score"] = original / max_score  # Нормализация к [0, 1]
-                    r["normalized"] = True
-                log.info(f"Нормализация Qdrant: max={max_score:.3f} → 1.0")
-            
-            # 12. Объединяем: reranked Qdrant + Neo4j (без rerank)
+            # 11. Объединяем: reranked Qdrant + Neo4j (без rerank)
             combined = reranked_qdrant + selected_neo4j
             
-            # 13. Сортируем по score и выбираем топ-N (до 20)
+            # 12. Сортируем по score и выбираем топ-N (до 20)
             combined.sort(key=lambda x: x.get("_score", 0), reverse=True)
             final_results = combined[:limit]
             
