@@ -1174,42 +1174,41 @@ class QdrantSearch:
             # 5. Определяем баланс concrete/abstract
             # Для abstract query — больше abstract, для concrete — больше concrete
             if query_type == "abstract":
-                concrete_limit = max(1, int(limit * 0.4))
-                abstract_limit = limit - concrete_limit
+                concrete_limit = max(1, int(limit * 0.3))  # Уменьшил до 30%
+                abstract_limit = limit - concrete_limit  # Увеличил до 70%
             else:
-                concrete_limit = max(1, int(limit * 0.6))
-                abstract_limit = limit - concrete_limit
+                concrete_limit = max(2, int(limit * 0.5))  # Уменьшил до 50%
+                abstract_limit = limit - concrete_limit  # Увеличил до 50%
             
             # 6. Берём лучшие concrete
             selected_concrete = concrete_candidates[:concrete_limit]
             
-            # 7. Поиск abstract из Neo4j (если доступен)
-            abstract_candidates = []
+            # 7. Поиск из Neo4j (все уровни: conclusion/lesson/principle/meta)
+            neo4j_candidates = []
             if self._neo4j:
                 # Используем существующий метод flashback() из Neo4jStore
-                # Если category пустой — получаем abstract из всех категорий
-                abstract_results = self._neo4j.flashback(category)
+                # Он возвращает все уровни: conclusion, lesson, principle, meta
+                neo4j_results = self._neo4j.flashback(category)
                 
-                # Фильтруем только principle и meta
-                for r in abstract_results:
+                for r in neo4j_results:
                     source = r.get("source_type", "")
-                    if source in ["principle", "meta"]:
-                        abstract_candidates.append({
-                            "text": r.get("insight", ""),
-                            "level": source,
-                            "category": r.get("category", category or "any"),
-                            "confidence": r.get("confidence", 0),
-                            "original_score": r.get("confidence", 0),
-                            "_score": r.get("confidence", 0),  # Используем confidence как score
-                            "source": "neo4j",
-                            "applies_when": r.get("applies_when", ""),
-                        })
+                    # Используем все уровни из Neo4j
+                    neo4j_candidates.append({
+                        "text": r.get("insight", ""),
+                        "level": source,
+                        "category": r.get("category", category or "any"),
+                        "confidence": r.get("confidence", 0),
+                        "original_score": r.get("confidence", 0),
+                        "_score": r.get("confidence", 0),  # Используем confidence как score
+                        "source": "neo4j",
+                        "applies_when": r.get("applies_when", ""),
+                    })
             
-            # 8. Берём лучшие abstract
-            selected_abstract = abstract_candidates[:abstract_limit]
+            # 8. Берём лучшие из Neo4j
+            selected_neo4j = neo4j_candidates[:abstract_limit]
             
-            # 9. Объединяем
-            selected = selected_concrete + selected_abstract
+            # 9. Объединяем Qdrant + Neo4j
+            selected = selected_concrete + selected_neo4j
             
             if not selected:
                 log.info(f"flashback_focus '{focus[:40]}' → 0 candidates")
@@ -1219,7 +1218,7 @@ class QdrantSearch:
             reranked = self._rerank(focus, selected)[:limit]
             
             log.info(f"flashback_focus '{focus[:40]}' type={query_type} cat={category or 'any'} "
-                     f"concrete={len(concrete_candidates)} abstract={len(abstract_candidates)} "
+                     f"qdrant={len(concrete_candidates)} neo4j={len(neo4j_candidates)} "
                      f"→ {len(reranked)} after rerank (balance: {concrete_limit}+{abstract_limit})")
             return reranked
 
