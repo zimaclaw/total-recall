@@ -18,6 +18,14 @@ import math
 import time
 import uuid
 from datetime import datetime, timezone
+from category_config import (
+    VALID_CATEGORIES,
+    CATEGORY_KEYWORDS,
+    LEVEL_WEIGHTS_CONCRETE,
+    LEVEL_WEIGHTS_ABSTRACT,
+    CONCRETE_KEYWORDS,
+    ABSTRACT_KEYWORDS,
+)
 from typing import Optional
 
 import requests
@@ -60,7 +68,7 @@ VALID_CATEGORIES = {
     "write", "user", "dev", "test", "research", "knowledge",
 }
 
-# ─── Байесовские таблицы ──────────────────────────────────────────────────────
+# LEVEL_WEIGHTS_CONCRETE и LEVEL_WEIGHTS_ABSTRACT импортированы из category_config
 
 DECAY_BY_EVIDENCE_TYPE = {
     "legal":     0.001900,  # half-life ~1 год
@@ -936,20 +944,7 @@ class Neo4jStore:
 
 # ─── QdrantSearch ─────────────────────────────────────────────────────────────
 
-# Весa для уровней памяти по типу query
-LEVEL_WEIGHTS_CONCRETE = {
-    "conclusion": 1.0,  # конкретные факты — максимальный вес
-    "lesson": 0.8,      # уроки — высокий вес
-    "principle": 0.6,   # принципы — средний вес
-    "meta": 0.4         # метапринципы — низкий вес
-}
-
-LEVEL_WEIGHTS_ABSTRACT = {
-    "conclusion": 0.4,  # конкретные факты — низкий вес
-    "lesson": 0.6,      # уроки — средний вес
-    "principle": 0.8,   # принципы — высокий вес
-    "meta": 1.0         # метапринципы — максимальный вес
-}
+# LEVEL_WEIGHTS_CONCRETE и LEVEL_WEIGHTS_ABSTRACT импортированы из category_config
 
 
 class QdrantSearch:
@@ -976,24 +971,13 @@ class QdrantSearch:
         Определяем тип query:
         - concrete = конкретный технический вопрос (порт, конфиг, ошибка)
         - abstract = абстрактный вопрос (принципы, решения, подходы)
+        
+        Использует CONCRETE_KEYWORDS и ABSTRACT_KEYWORDS из category_config
         """
-        concrete_keywords = [
-            "порт", "ошибка", "баг", "не работает", "как настроить",
-            "конфиг", "файл", "команда", "скрипт", "docker", "nginx",
-            "ollama", "endpoint", "api", "path", "directory", "бэкап",
-            "research", "субагент", "пустые ответы", "таймаут"
-        ]
-        
-        abstract_keywords = [
-            "как принимать", "принципы", "подход", "стратегия",
-            "эффективно", "лучше", "правила", "методология",
-            "решения", "неопределённости", "качества", "ассистентка"
-        ]
-        
         query_lower = query.lower()
         
-        concrete_score = sum(1 for kw in concrete_keywords if kw in query_lower)
-        abstract_score = sum(1 for kw in abstract_keywords if kw in query_lower)
+        concrete_score = sum(1 for kw in CONCRETE_KEYWORDS if kw in query_lower)
+        abstract_score = sum(1 for kw in ABSTRACT_KEYWORDS if kw in query_lower)
         
         return "abstract" if abstract_score > concrete_score else "concrete"
 
@@ -1001,35 +985,15 @@ class QdrantSearch:
         """
         Автоматически определяем категорию из текста запроса.
         
-        Возвращает: infra, dev, research, memory, test, write, plan, deploy, user, knowledge
+        Использует CATEGORY_KEYWORDS из category_config
+        
+        Возвращает: infra, dev, research, memory, test, write, plan, deploy
         """
         query_lower = query.lower()
         
-        # Категории и ключевые слова
-        category_keywords = {
-            "infra": ["порт", "endpoint", "ollama", "nginx", "docker", "сеть", "сервер", 
-                      "конфиг", "файл", "путь", "directory", "path", "бэкап", "backup",
-                      "ss -tlnp", "reload", "сохранять", "состояние"],
-            "dev": ["код", "ошибка", "баг", "debug", "тест", "test", "скрипт", "функция",
-                    "метод", "класс", "модуль", "библиотека", "импорт", "экспорт",
-                    "research", "субагент", "пустые ответы", "hook", "prompt"],
-            "research": ["исследование", "изучение", "документация", "анализ", "понимать",
-                        "структура", "архитектура", "как принимать решения", "неопределённость",
-                        "принципы", "эффективной", "эффективность", "помогать", "ассистенткой"],
-            "memory": ["память", "flashback", "категория", "уровень", "principle", "meta",
-                      "lesson", "conclusion", "рефлексия", "запомнить"],
-            "test": ["проверить", "тест", "валидация", "healthcheck", "стабильность",
-                    "threshold", "ошибки", "лог", "логирование"],
-            "write": ["написать", "документ", "текст", "обсуждение", "вопрос", "ответ",
-                     "итеративный", "обновлять"],
-            "plan": ["план", "планирование", "шаг", "действие", "задача", "декомпозиция"],
-            "deploy": ["деплой", "развёртывание", "сервер", "production", "git", "push",
-                      "commit", "branch", "merge"],
-        }
-        
         # Считаем совпадения для каждой категории
         scores = {}
-        for category, keywords in category_keywords.items():
+        for category, keywords in CATEGORY_KEYWORDS.items():
             score = sum(1 for kw in keywords if kw in query_lower)
             scores[category] = score
         

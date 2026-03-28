@@ -68,7 +68,8 @@ def _print_flashback_focus(results: list, focus: str, category: str):
         print("  (нет результатов)")
         return
     for r in results:
-        print(f"  [score={r['_score']:.2f} · {r.get('category', '')} · {r.get('outcome', '')}]")
+        source = r.get('source', 'qdrant')  # 'qdrant' или 'neo4j'
+        print(f"  [score={r['_score']:.2f} · {r.get('category', '')} · {source.upper()}]")
         print(f"  {r.get('text', '')}")
         print()
 
