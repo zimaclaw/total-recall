@@ -1022,13 +1022,12 @@ class Neo4jStore:
 
     def flashback_hierarchical(self, query: str, llm: "LLMClient") -> dict:
         """
-        Иерархический flashback с vector search и фильтрацией поглощённых Conclusion:
+        Иерархический flashback с vector search и заменой Conclusion на Lesson:
         1. Vector search по query → топ-5 Conclusion (similarity > 0.65)
         2. Граф вверх: Conclusion → Lesson → Principle → Meta
-        3. Lesson поглощает Conclusion если из одного источника и текст похож (70%+ слов)
+        3. Если Lesson поглощает Conclusion — заменяем его Lesson на том же месте
         4. Дедупликация Principle и Meta по ID
-        5. Пороги: Lesson conf>0.60 (топ-2), Principle conf>0.70 (топ-1), Meta только если макс similarity>0.80 (топ-1)
-        6. Порядок вывода: Conclusion → Lesson → Principle → Meta
+        5. Порядок вывода: items (Conclusion/Lesson вперемешку) → Principle → Meta
         """
         query_embedding = llm.embed(query)
         if not query_embedding:
@@ -1059,7 +1058,6 @@ class Neo4jStore:
                     l.confidence AS l_conf,
                     l.mastery AS l_mastery,
                     l.applied_count AS l_applied,
-                    count(DISTINCT l.lesson_id) AS l_source_count,
                     p.principle_id AS p_id,
                     p.statement AS p_statement,
                     p.confidence AS p_conf,
@@ -1075,39 +1073,37 @@ class Neo4jStore:
 
         max_similarity = max(r['c_similarity'] for r in results)
 
-        conclusions = []
-        lessons = []
-        principles = []
-        metas = []
-        absorbed_conclusions = set()
+        # Строим упорядоченный список: каждый Conclusion либо сам либо заменён Lesson
+        items = []  # список {'type': 'conclusion'|'lesson', ...}
 
         seen_c = set()
         seen_l = set()
         seen_p = set()
         seen_m = set()
 
-        # Сначала собираем Lesson — они определяют какие Conclusion поглощены
         for r in results:
-            if r['l_id'] and r['l_id'] not in seen_l and len(lessons) < 2:
-                seen_l.add(r['l_id'])
-                lesson = {
-                    'text': r['l_text'],
-                    'confidence': r['l_conf'],
-                    'mastery': r['l_mastery'],
-                    'applied': r['l_applied'],
-                }
-                lessons.append(lesson)
-                # Если Lesson из одного источника — проверяем поглощение
-                if r['l_source_count'] == 1:
-                    if r['c_id'] and self._lesson_absorbs_conclusion(r['l_text'], r['c_insight']):
-                        absorbed_conclusions.add(r['c_id'])
+            if not r['c_id'] or r['c_id'] in seen_c:
+                continue
+            seen_c.add(r['c_id'])
 
-        # Conclusion — пропускаем поглощённые
-        for r in results:
-            if r['c_id'] and r['c_id'] not in seen_c:
-                seen_c.add(r['c_id'])
-                if r['c_id'] not in absorbed_conclusions:
-                    conclusions.append({
+            # Есть Lesson для этого Conclusion?
+            if r['l_id'] and r['l_id'] not in seen_l:
+                absorbed = self._lesson_absorbs_conclusion(r['l_text'], r['c_insight'])
+                if absorbed:
+                    # Заменяем Conclusion его Lesson на том же месте
+                    seen_l.add(r['l_id'])
+                    items.append({
+                        'type': 'lesson',
+                        'text': r['l_text'],
+                        'confidence': r['l_conf'],
+                        'mastery': r['l_mastery'],
+                        'applied': r['l_applied'],
+                        'similarity': r['c_similarity'],  # similarity от Conclusion
+                    })
+                else:
+                    # Lesson есть но текст разный — показываем оба
+                    items.append({
+                        'type': 'conclusion',
                         'insight': r['c_insight'],
                         'goal': r['c_goal'],
                         'outcome': r['c_outcome'],
@@ -1115,8 +1111,30 @@ class Neo4jStore:
                         'similarity': r['c_similarity'],
                         'category': r['c_category'],
                     })
+                    if r['l_id'] not in seen_l:
+                        seen_l.add(r['l_id'])
+                        items.append({
+                            'type': 'lesson',
+                            'text': r['l_text'],
+                            'confidence': r['l_conf'],
+                            'mastery': r['l_mastery'],
+                            'applied': r['l_applied'],
+                            'similarity': r['c_similarity'],
+                        })
+            else:
+                # Нет Lesson — показываем Conclusion как есть
+                items.append({
+                    'type': 'conclusion',
+                    'insight': r['c_insight'],
+                    'goal': r['c_goal'],
+                    'outcome': r['c_outcome'],
+                    'confidence': r['c_conf'],
+                    'similarity': r['c_similarity'],
+                    'category': r['c_category'],
+                })
 
-        # Principle (топ-1)
+        # Principle — топ-1 по conf
+        principles = []
         for r in results:
             if r['p_id'] and r['p_id'] not in seen_p and not principles:
                 seen_p.add(r['p_id'])
@@ -1125,7 +1143,8 @@ class Neo4jStore:
                     'confidence': r['p_conf'],
                 })
 
-        # Meta (топ-1, только если макс similarity > 0.80)
+        # Meta — только если max similarity > 0.80
+        metas = []
         if max_similarity > 0.80:
             for r in results:
                 if r['m_id'] and r['m_id'] not in seen_m and not metas:
@@ -1135,13 +1154,12 @@ class Neo4jStore:
                         'confidence': r['m_conf'],
                     })
 
-        log.info(f"Hierarchical flashback: {len(conclusions)} conclusions, "
-                 f"{len(lessons)} lessons, {len(principles)} principles, {len(metas)} metas "
-                 f"(absorbed: {len(absorbed_conclusions)})")
+        absorbed_count = sum(1 for i in items if i['type'] == 'lesson')
+        log.info(f"Hierarchical flashback: {len(items)} items, {len(principles)} principles, "
+                 f"{len(metas)} metas (absorbed: {absorbed_count})")
 
         return {
-            'conclusions': conclusions,
-            'lessons': lessons,
+            'items': items,  # упорядоченный список Conclusion и Lesson вперемешку
             'principles': principles,
             'metas': metas,
             'max_similarity': max_similarity,

@@ -79,15 +79,17 @@ def _print_flashback_hierarchical(data: dict):
         print("\n  (нет релевантного опыта)")
         return
 
-    for c in data.get('conclusions', []):
-        print(f"  [conclusion · conf={c['confidence']:.2f} · similarity={c['similarity']:.2f} · category={c['category']}]")
-        print(f"  goal: {c['goal']} | outcome: {c['outcome']}")
-        print(f"  {c['insight']}")
-        print()
-
-    for l in data.get('lessons', []):
-        print(f"  [lesson · conf={l['confidence']:.2f} · mastery={l['mastery']:.1f} · applied={l['applied']}]")
-        print(f"  {l['text']}")
+    for item in data.get('items', []):
+        if item['type'] == 'conclusion':
+            print(f"  [conclusion · conf={item['confidence']:.2f} · "
+                  f"similarity={item['similarity']:.2f} · category={item['category']}]")
+            print(f"  goal: {item['goal']} | outcome: {item['outcome']}")
+            print(f"  {item['insight']}")
+        elif item['type'] == 'lesson':
+            print(f"  [lesson · conf={item['confidence']:.2f} · "
+                  f"mastery={item['mastery']:.1f} · applied={item['applied']} · "
+                  f"similarity={item['similarity']:.2f}]")
+            print(f"  {item['text']}")
         print()
 
     for p in data.get('principles', []):
