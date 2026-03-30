@@ -18,24 +18,24 @@ class Settings(BaseSettings):
     )
 
     # ─── Neo4j ────────────────────────────────────────────────────────────────
-    neo4j_uri:      str = "bolt://localhost:7687"
+    neo4j_uri:      str = "bolt://192.168.1.145:7687"
     neo4j_user:     str = "neo4j"
     neo4j_password: str  # обязательное — нет дефолта
 
-    # ─── Qdrant ───────────────────────────────────────────────────────────────
-    qdrant_host:       str   = "localhost"
-    qdrant_port:       int   = 6333
-    qdrant_collection: str   = "reflections"
-    similarity_threshold: float = 0.72
+    # ─── PostgreSQL ───────────────────────────────────────────────────────────
+    pg_dsn: str  # обязательное — нет дефолта
 
-    # ─── Embeddings & Reranker ────────────────────────────────────────────────
-    embed_url:    str = "http://localhost:11435/api/embeddings"
-    embed_model:  str = "bge-m3:latest"
-    rerank_url:   str = "http://localhost:11437/api/embeddings"
-    rerank_model: str = "xitao/bge-reranker-v2-m3:latest"
+    # ─── Qdrant ───────────────────────────────────────────────────────────────
+    qdrant_host:          str   = "192.168.1.145"
+    qdrant_port:          int   = 6333
+    similarity_threshold: float = 0.40
+
+    # ─── Embeddings ───────────────────────────────────────────────────────────
+    embed_url:   str = "http://192.168.1.145:11435/api/embeddings"
+    embed_model: str = "bge-m3:latest"
 
     # ─── LLM для рефлексии ────────────────────────────────────────────────────
-    ollama_url:    str = "http://localhost:11434/api/chat"
+    ollama_url:    str = "http://192.168.1.145:11434/api/chat"
     reflect_model: str = "qwen3:14b"
 
     # ─── Пути ─────────────────────────────────────────────────────────────────
@@ -43,9 +43,9 @@ class Settings(BaseSettings):
     log_dir:  Path = Path("/home/ironman/.openclaw/workspace/logs")
 
     # ─── Триггеры демона ──────────────────────────────────────────────────────
-    reflect_trigger_count:   int = 10   # новых Conclusion → запустить reflect
-    reflect_trigger_hours:   int = 24   # часов без рефлексии → запустить принудительно
-    reflect_poll_seconds:    int = 300  # как часто демон проверяет триггеры
+    reflect_trigger_count: int = 10
+    reflect_trigger_hours: int = 24
+    reflect_poll_seconds:  int = 300
 
     # ─── Байесовские пороги ───────────────────────────────────────────────────
     flashback_threshold:      float = 0.60
@@ -53,12 +53,11 @@ class Settings(BaseSettings):
     lesson_mastery_threshold: float = 0.60
     needs_review_threshold:   float = 0.40
 
-    # ─── Пороги рефлексии (Фаза 2) ───────────────────────────────────────────
-    principle_min_cluster:    int   = 3     # минимум Lesson в кластере → Principle
-    principle_conf_threshold: float = 0.70  # минимальный avg confidence кластера
-    meta_min_cluster:         int   = 2     # минимум Principle → Meta
+    # ─── Пороги рефлексии ─────────────────────────────────────────────────────
+    principle_min_cluster:    int   = 3
+    principle_conf_threshold: float = 0.70
+    meta_min_cluster:         int   = 2
 
 
-# Синглтон — импортируется один раз при старте
-# Если .env не найден или обязательное поле не задано — ValidationError при импорте
 settings = Settings()
+
