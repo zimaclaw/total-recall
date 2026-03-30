@@ -662,6 +662,81 @@ class Neo4jStore:
         """, now=now)
         log.info("ReflectionState counter reset")
 
+    def regenerate_embeddings(self, llm: "LLMClient"):
+        """Перегенерировать embeddings для всех узлов в новом формате."""
+        log.info("Starting embeddings regeneration...")
+
+        with self.driver.session() as s:
+            # Conclusion: "goal: {goal} | outcome: {outcome} | insight: {insight}"
+            conclusions = s.run("""
+                MATCH (t:Task)-[:HAS_CONCLUSION]->(c:Conclusion)
+                RETURN c.conclusion_id AS id, t.goal AS goal, t.outcome AS outcome, c.insight AS insight
+            """).data()
+
+            for c in conclusions:
+                text = f"goal: {c['goal']} | outcome: {c['outcome']} | insight: {c['insight']}"
+                embedding = llm.embed(text)
+                if embedding:
+                    s.run("""
+                        MATCH (c:Conclusion {conclusion_id: $id})
+                        SET c.embedding = $embedding
+                    """, id=c['id'], embedding=embedding)
+
+            log.info(f"Conclusion: {len(conclusions)} embeddings updated")
+
+            # Lesson: "lesson: {principle} | mastery: {mastery}"
+            lessons = s.run("""
+                MATCH (l:Lesson)
+                RETURN l.lesson_id AS id, l.principle AS principle, l.mastery AS mastery
+            """).data()
+
+            for l in lessons:
+                text = f"lesson: {l['principle']} | mastery: {l['mastery']}"
+                embedding = llm.embed(text)
+                if embedding:
+                    s.run("""
+                        MATCH (l:Lesson {lesson_id: $id})
+                        SET l.embedding = $embedding
+                    """, id=l['id'], embedding=embedding)
+
+            log.info(f"Lesson: {len(lessons)} embeddings updated")
+
+            # Principle: "principle: {statement} | category: {category}"
+            principles = s.run("""
+                MATCH (p:Principle)
+                RETURN p.principle_id AS id, p.statement AS statement, p.category AS category
+            """).data()
+
+            for p in principles:
+                text = f"principle: {p['statement']} | category: {p['category']}"
+                embedding = llm.embed(text)
+                if embedding:
+                    s.run("""
+                        MATCH (p:Principle {principle_id: $id})
+                        SET p.embedding = $embedding
+                    """, id=p['id'], embedding=embedding)
+
+            log.info(f"Principle: {len(principles)} embeddings updated")
+
+            # Meta: "meta: {statement}"
+            metas = s.run("""
+                MATCH (m:Meta)
+                RETURN m.meta_id AS id, m.statement AS statement
+            """).data()
+
+            for m in metas:
+                text = f"meta: {m['statement']}"
+                embedding = llm.embed(text)
+                if embedding:
+                    s.run("""
+                        MATCH (m:Meta {meta_id: $id})
+                        SET m.embedding = $embedding
+                    """, id=m['id'], embedding=embedding)
+
+            log.info(f"Meta: {len(metas)} embeddings updated")
+
+        log.info("Embeddings regeneration completed")
+
     # ── Reflect: Lesson → Principle → Meta ────────────────────────────────────
 
     def reflect(self, llm: "LLMClient") -> dict:
@@ -864,9 +939,24 @@ class Neo4jStore:
 
     # ── Flashback ─────────────────────────────────────────────────────────────
 
+    def _lesson_absorbs_conclusion(self, lesson_text: str, conclusion_insight: str) -> bool:
+        """
+        Проверяет похожесть текста Lesson и Conclusion.
+        Если Lesson выведен из одного источника и текст похож — Conclusion поглощён.
+        """
+        if not lesson_text or not conclusion_insight:
+            return False
+        # Простое сравнение: если 70%+ слов совпадают — считаем похожими
+        l_words = set(lesson_text.lower().split())
+        c_words = set(conclusion_insight.lower().split())
+        if not c_words:
+            return False
+        overlap = len(l_words & c_words) / len(c_words)
+        return overlap >= 0.70
+
     def flashback(self, category: str) -> list:
         """
-        Возвращает релевантный опыт по category.
+        Legacy: возвращает релевантный опыт по category.
         Поднимается по всей иерархии: Conclusion → Lesson → Principle → Meta.
         """
         return self.run("""
@@ -929,6 +1019,133 @@ class Neo4jStore:
             lesson_conf    = settings.lesson_conf_threshold,
             lesson_mastery = settings.lesson_mastery_threshold,
         )
+
+    def flashback_hierarchical(self, query: str, llm: "LLMClient") -> dict:
+        """
+        Иерархический flashback с vector search и фильтрацией поглощённых Conclusion:
+        1. Vector search по query → топ-5 Conclusion (similarity > 0.65)
+        2. Граф вверх: Conclusion → Lesson → Principle → Meta
+        3. Lesson поглощает Conclusion если из одного источника и текст похож (70%+ слов)
+        4. Дедупликация Principle и Meta по ID
+        5. Пороги: Lesson conf>0.60 (топ-2), Principle conf>0.70 (топ-1), Meta только если макс similarity>0.80 (топ-1)
+        6. Порядок вывода: Conclusion → Lesson → Principle → Meta
+        """
+        query_embedding = llm.embed(query)
+        if not query_embedding:
+            log.warning("Failed to embed query")
+            return {}
+
+        with self.driver.session() as s:
+            results = s.run("""
+                CALL db.index.vector.queryNodes('conclusion_embedding', 5, $embedding)
+                YIELD node AS c, score
+                WHERE score > 0.65
+                OPTIONAL MATCH (c)-[:GENERALIZES_TO]->(l:Lesson)
+                    WHERE l.confidence > 0.60
+                OPTIONAL MATCH (l)-[:ABSTRACTED_TO]->(p:Principle)
+                    WHERE p.confidence > 0.70
+                OPTIONAL MATCH (p)-[:ABSTRACTED_TO]->(m:Meta)
+                OPTIONAL MATCH (t:Task)-[:HAS_CONCLUSION]->(c)
+                RETURN
+                    c.conclusion_id AS c_id,
+                    c.insight AS c_insight,
+                    c.confidence AS c_conf,
+                    c.category AS c_category,
+                    t.goal AS c_goal,
+                    t.outcome AS c_outcome,
+                    score AS c_similarity,
+                    l.lesson_id AS l_id,
+                    l.principle AS l_text,
+                    l.confidence AS l_conf,
+                    l.mastery AS l_mastery,
+                    l.applied_count AS l_applied,
+                    count(DISTINCT l.lesson_id) AS l_source_count,
+                    p.principle_id AS p_id,
+                    p.statement AS p_statement,
+                    p.confidence AS p_conf,
+                    m.meta_id AS m_id,
+                    m.statement AS m_statement,
+                    m.confidence AS m_conf
+                ORDER BY score DESC
+            """, embedding=query_embedding).data()
+
+        if not results:
+            log.info(f"No results found for flashback query: '{query[:50]}'")
+            return {}
+
+        max_similarity = max(r['c_similarity'] for r in results)
+
+        conclusions = []
+        lessons = []
+        principles = []
+        metas = []
+        absorbed_conclusions = set()
+
+        seen_c = set()
+        seen_l = set()
+        seen_p = set()
+        seen_m = set()
+
+        # Сначала собираем Lesson — они определяют какие Conclusion поглощены
+        for r in results:
+            if r['l_id'] and r['l_id'] not in seen_l and len(lessons) < 2:
+                seen_l.add(r['l_id'])
+                lesson = {
+                    'text': r['l_text'],
+                    'confidence': r['l_conf'],
+                    'mastery': r['l_mastery'],
+                    'applied': r['l_applied'],
+                }
+                lessons.append(lesson)
+                # Если Lesson из одного источника — проверяем поглощение
+                if r['l_source_count'] == 1:
+                    if r['c_id'] and self._lesson_absorbs_conclusion(r['l_text'], r['c_insight']):
+                        absorbed_conclusions.add(r['c_id'])
+
+        # Conclusion — пропускаем поглощённые
+        for r in results:
+            if r['c_id'] and r['c_id'] not in seen_c:
+                seen_c.add(r['c_id'])
+                if r['c_id'] not in absorbed_conclusions:
+                    conclusions.append({
+                        'insight': r['c_insight'],
+                        'goal': r['c_goal'],
+                        'outcome': r['c_outcome'],
+                        'confidence': r['c_conf'],
+                        'similarity': r['c_similarity'],
+                        'category': r['c_category'],
+                    })
+
+        # Principle (топ-1)
+        for r in results:
+            if r['p_id'] and r['p_id'] not in seen_p and not principles:
+                seen_p.add(r['p_id'])
+                principles.append({
+                    'statement': r['p_statement'],
+                    'confidence': r['p_conf'],
+                })
+
+        # Meta (топ-1, только если макс similarity > 0.80)
+        if max_similarity > 0.80:
+            for r in results:
+                if r['m_id'] and r['m_id'] not in seen_m and not metas:
+                    seen_m.add(r['m_id'])
+                    metas.append({
+                        'statement': r['m_statement'],
+                        'confidence': r['m_conf'],
+                    })
+
+        log.info(f"Hierarchical flashback: {len(conclusions)} conclusions, "
+                 f"{len(lessons)} lessons, {len(principles)} principles, {len(metas)} metas "
+                 f"(absorbed: {len(absorbed_conclusions)})")
+
+        return {
+            'conclusions': conclusions,
+            'lessons': lessons,
+            'principles': principles,
+            'metas': metas,
+            'max_similarity': max_similarity,
+        }
 
 
 # ─── QdrantSearch ─────────────────────────────────────────────────────────────
@@ -1135,6 +1352,24 @@ class LLMClient:
     def __init__(self):
         self.url   = settings.ollama_url
         self.model = settings.reflect_model
+
+    def embed(self, text: str) -> Optional[list[float]]:
+        """Генерирует embedding через bge-m3."""
+        try:
+            resp = requests.post(
+                settings.embed_url,
+                json={"model": settings.embed_model, "input": text},
+                timeout=30,
+            )
+            resp.raise_for_status()
+            data       = resp.json()
+            embeddings = data.get("embeddings", [])
+            if embeddings:
+                return embeddings[0]
+            return data.get("embedding", [])
+        except Exception as e:
+            log.error(f"Embed failed: {e}")
+            return None
 
     def _ask(self, prompt: str, max_tokens: int = 200) -> Optional[str]:
         try:

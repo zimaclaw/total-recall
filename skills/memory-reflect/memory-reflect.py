@@ -73,6 +73,34 @@ def _print_flashback_focus(results: list, focus: str, category: str):
         print()
 
 
+def _print_flashback_hierarchical(data: dict):
+    """Печать иерархического flashback."""
+    if not data:
+        print("\n  (нет релевантного опыта)")
+        return
+
+    for c in data.get('conclusions', []):
+        print(f"  [conclusion · conf={c['confidence']:.2f} · similarity={c['similarity']:.2f} · category={c['category']}]")
+        print(f"  goal: {c['goal']} | outcome: {c['outcome']}")
+        print(f"  {c['insight']}")
+        print()
+
+    for l in data.get('lessons', []):
+        print(f"  [lesson · conf={l['confidence']:.2f} · mastery={l['mastery']:.1f} · applied={l['applied']}]")
+        print(f"  {l['text']}")
+        print()
+
+    for p in data.get('principles', []):
+        print(f"  [principle · conf={p['confidence']:.2f}]")
+        print(f"  {p['statement']}")
+        print()
+
+    for m in data.get('metas', []):
+        print(f"  [meta · conf={m['confidence']:.2f}]")
+        print(f"  {m['statement']}")
+        print()
+
+
 def _print_status(state: dict):
     from datetime import datetime, timezone
     last_run_ts = state.get("last_run_ts", 0)
@@ -121,10 +149,14 @@ def main():
                         help="Фильтр по категории")
     parser.add_argument("--focus",       default="",
                         help="Семантический поиск по теме (Qdrant + reranker)")
+    parser.add_argument("--query",       default="",
+                        help="Иерархический flashback по query (Neo4j vector index)")
     parser.add_argument("--reflect",     action="store_true",
                         help="Запустить рефлексию вручную (Lesson → Principle → Meta)")
     parser.add_argument("--status",      action="store_true",
                         help="Показать состояние ReflectionState")
+    parser.add_argument("--regenerate-embeddings", action="store_true",
+                        help="Перегенерировать embeddings для всех узлов")
     args = parser.parse_args()
 
     neo4j   = Neo4jStore(dry_run=args.dry_run)
@@ -145,12 +177,26 @@ def main():
             success = True
             return
 
+        # ── regenerate-embeddings ────────────────────────────────────────────
+        if args.regenerate_embeddings:
+            llm = LLMClient()
+            neo4j.regenerate_embeddings(llm)
+            success = True
+            return
+
         # ── flashback ─────────────────────────────────────────────────────────
         if args.flashback:
-            if args.focus:
+            if args.query:
+                # Иерархический flashback через vector index
+                llm = LLMClient()
+                results = neo4j.flashback_hierarchical(args.query, llm)
+                _print_flashback_hierarchical(results)
+            elif args.focus:
+                # Семантический поиск через Qdrant
                 results = qdrant.flashback_focus(args.focus, args.category)
                 _print_flashback_focus(results, args.focus, args.category)
             else:
+                # Legacy: по категории
                 category = args.category or "dev"
                 results  = neo4j.flashback(category)
                 _print_flashback_neo4j(results, category)
