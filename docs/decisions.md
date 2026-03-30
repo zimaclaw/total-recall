@@ -151,9 +151,16 @@ return entry.sessionId;
 
 ## Neo4j vector index — статус
 
-**Запланировано:** создать `VECTOR INDEX ON Conclusion(embedding)`.  
-**Перегенерировать:** embeddings в формате "запрос → outcome".  
-**Статус:** не реализовано.
+**Реализовано:** 2026-03-31  
+**Индекс:** `VECTOR INDEX conclusion_embedding ON Conclusion(embedding)` (dimensions: 1024, cosine)  
+**Embeddings перегенерированы** для всех 4 уровней в контекстном формате:
+
+| Уровень | Формат |
+|---------|--------|
+| Conclusion | `"goal: {goal} \| outcome: {outcome} \| insight: {insight}"` |
+| Lesson | `"lesson: {principle} \| mastery: {mastery}"` |
+| Principle | `"principle: {statement} \| category: {category}"` |
+| Meta | `"meta: {statement}"` |
 
 ---
 
@@ -188,7 +195,7 @@ Vector search по запросу пользователя находит рел
 | Conclusion | similarity > 0.65 | топ-5 |
 | Lesson | conf > 0.60 | топ-2 |
 | Principle | conf > 0.70 | топ-1 (самый высокий conf) |
-| Meta | только если макс similarity Conclusion > 0.75 | топ-1 |
+| Meta | только если макс similarity Conclusion > 0.80 | топ-1 |
 
 Meta показывается только когда найденный опыт действительно релевантен — иначе абстрактный метапринцип будет появляться в каждом flashback и превратится в шум.
 
