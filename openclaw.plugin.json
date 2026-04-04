@@ -1,6 +1,13 @@
 {
   "id": "total-recall",
   "kind": "extension",
+  "hooks": [
+    "command:new",
+    "message:received",
+    "before:prompt:build",
+    "message:sent",
+    "after:tool:call"
+  ],
   "uiHints": {
     "enabled": {
       "label": "Enabled",

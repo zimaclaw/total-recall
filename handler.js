@@ -6,6 +6,7 @@ const DIR     = '/home/ironman/.openclaw/skills/memory-reflect';
 const PYTHON  = `${DIR}/.venv/bin/python`;
 const REFLECT = `${DIR}/memory-reflect.py`;
 const SESSION = `${DIR}/session_store.py`;
+const KB_STORE = `${DIR}/kb_store.py`;
 const CORE_MD = '/home/ironman/.openclaw/workspace/CORE.md';
 
 // In-memory маппинг составного ключа → sessionId
@@ -102,13 +103,12 @@ function getCoremd() {
 }
 
 function getFlashback(prompt) {
-  const category = inferCategory(prompt);
-  const out = runPython(REFLECT, ['--flashback', '--category', category]);
+  const out = runPython(REFLECT, ['--flashback', '--query', prompt]);
   if (!out?.trim()) return null;
   const lines = out.split('\n')
     .filter(l => !/\d{4}-\d{2}-\d{2}.*\[(INFO|WARNING|ERROR)\]/.test(l) && l.trim())
     .join('\n').trim();
-  return lines ? { text: lines, category } : null;
+  return lines ? { text: lines } : null;
 }
 
 function getSkeleton(sessionId) {
@@ -121,6 +121,22 @@ function getFocus(sessionId, prompt) {
   const out = runPython(SESSION, ['focus', '--session-id', sessionId, '--query', prompt]);
   const data = parseJson(out);
   return data?.focus || null;
+}
+
+/**
+ * Поиск релевантной информации в Knowledge Base.
+ * @param {string} prompt - запрос пользователя
+ * @returns {string|null} форматированный список результатов или null
+ */
+function getKB(prompt) {
+  const out = runPython(KB_STORE, ['kb_search', '--query', prompt, '--limit', '3'], 10000);
+  const data = parseJson(out);
+  if (!data?.results?.length) return null;
+  const lines = data.results
+    .filter(r => r.score > 0.55)
+    .map(r => `[${r.title}]\n${r.summary}`)
+    .join('\n\n');
+  return lines || null;
 }
 
 function block(title, content) {
@@ -164,33 +180,47 @@ export async function beforePromptBuild(event, ctx) {
       sessionMap.set(compositeKey, ctx.sessionId);
     }
   }
-  const parts = [];
 
+  // Стабильный контекст (prependSystemContext) — CORE.md + flashback
+  const stableParts = [];
   const coremd = getCoremd();
-  if (coremd) parts.push(block('CORE', coremd));
+  if (coremd) stableParts.push(block('CORE', coremd));
 
   const fb = getFlashback(userPrompt);
-  if (fb) parts.push(block(`MEMORY CONTEXT [${fb.category}]`, fb.text));
+  if (fb) stableParts.push(block('MEMORY CONTEXT', fb.text));
 
+  // Динамический контекст (prependContext) — скелет + фокус + KB
+  const dynamicParts = [];
   if (sessionId) {
     const skeleton = getSkeleton(sessionId);
-    if (skeleton) parts.push(block('SESSION SKELETON', skeleton));
+    if (skeleton) dynamicParts.push(block('SESSION SKELETON', skeleton));
 
     const focus = getFocus(sessionId, userPrompt);
-    if (focus) parts.push(block('SESSION FOCUS', focus));
+    if (focus) dynamicParts.push(block('SESSION FOCUS', focus));
   }
 
-  log(`before_prompt_build: ${Date.now() - t0}ms | parts=${parts.length} session=${sessionId || 'none'}`);
+  // KB — релевантная информация из Knowledge Base
+  const kb = getKB(userPrompt);
+  if (kb) dynamicParts.push(block('KNOWLEDGE BASE', kb));
 
-  if (!parts.length) return {};
-  return { prependContext: parts.join('\n\n') };
+  const stableCount = stableParts.length;
+  const dynamicCount = dynamicParts.length;
+  log(`before_prompt_build: ${Date.now() - t0}ms | stable=${stableCount} dynamic=${dynamicCount} session=${sessionId || 'none'}`);
+
+  const result = {};
+  if (stableParts.length) {
+    result.prependSystemContext = stableParts.join('\n\n');
+  }
+  if (dynamicParts.length) {
+    result.prependContext = dynamicParts.join('\n\n');
+  }
+  return result;
 }
 
 export function onMessageSent(event, ctx) {
   const content = event?.content;
   const sessionId = resolveSessionId(ctx, event);
   if (!content || !sessionId) return;
-  runPython(SESSION, ['session_start', '--session-id', sessionId], 5000);
   runPython(SESSION, ['session_start', '--session-id', sessionId], 5000);
   runPython(SESSION, [
     'message_write',
