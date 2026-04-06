@@ -235,7 +235,7 @@ export function onMessageSent(event, ctx) {
   
   if (pending) {
     // sessionId из ctx (agent_end) — правильный, pending.sessionId может быть устаревшим
-    const sessionId = ctx?.sessionId || pending.sessionId;
+    const sessionId = ctx?.sessionId || lastKnownSessionId || pending.sessionId;
     const pendingUser = pending.content;
     
     if (!content || !sessionId) {
