@@ -191,7 +191,7 @@ export async function beforePromptBuild(event, ctx) {
     }
   }
 
-  // Стабильный контекст (prependSystemContext) — CORE.md + flashback
+  // Стабильный контекст (prependSystemContext) — ВСЁ здесь
   const stableParts = [];
   const coremd = getCoremd();
   if (coremd) stableParts.push(block('CORE', coremd));
@@ -199,30 +199,24 @@ export async function beforePromptBuild(event, ctx) {
   const fb = getFlashback(userPrompt);
   if (fb) stableParts.push(block('MEMORY CONTEXT', fb.text));
 
-  // Динамический контекст (prependContext) — скелет + фокус + KB
-  const dynamicParts = [];
   if (sessionId) {
     const skeleton = getSkeleton(sessionId);
-    if (skeleton) dynamicParts.push(block('SESSION SKELETON', skeleton));
+    if (skeleton) stableParts.push(block('SESSION SKELETON', skeleton));
 
     const focus = getFocus(sessionId, userPrompt);
-    if (focus) dynamicParts.push(block('SESSION FOCUS', focus));
+    if (focus) stableParts.push(block('SESSION FOCUS', focus));
   }
 
   // KB — релевантная информация из Knowledge Base
   const kb = getKB(userPrompt);
-  if (kb) dynamicParts.push(block('KNOWLEDGE BASE', kb));
+  if (kb) stableParts.push(block('KNOWLEDGE BASE', kb));
 
-  const stableCount = stableParts.length;
-  const dynamicCount = dynamicParts.length;
-  log(`before_prompt_build: ${Date.now() - t0}ms | stable=${stableCount} dynamic=${dynamicCount} session=${sessionId || 'none'}`);
+  const totalParts = stableParts.length;
+  log(`before_prompt_build: ${Date.now() - t0}ms | parts=${totalParts} session=${sessionId || 'none'}`);
 
   const result = {};
   if (stableParts.length) {
     result.prependSystemContext = stableParts.join('\n\n');
-  }
-  if (dynamicParts.length) {
-    result.prependContext = dynamicParts.join('\n\n');
   }
   return result;
 }
