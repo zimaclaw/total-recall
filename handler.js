@@ -215,9 +215,44 @@ export async function beforePromptBuild(event, ctx) {
   log(`before_prompt_build: ${Date.now() - t0}ms | parts=${totalParts} session=${sessionId || 'none'}`);
 
   const result = {};
+  
+  // ТЕСТОВОЕ ЛОГИРОВАНИЕ — добавить уникальные фразы для проверки
+  const testMarker = "### TEST_MARKER ###";
+  
+  // prependSystemContext
   if (stableParts.length) {
-    result.prependSystemContext = stableParts.join('\n\n');
+    result.prependSystemContext = stableParts.join('\n\n') + `\n\n${testMarker} [PREPEND_SYSTEM_CONTEXT: ${Date.now()}]`;
+    log(`TEST: prependSystemContext = ${result.prependSystemContext.length} chars`);
+  } else {
+    log(`TEST: prependSystemContext = null`);
   }
+  
+  // prependContext
+  if (Math.random() > 0.5) { // 50% шанс для теста
+    result.prependContext = `${testMarker} [PREPEND_CONTEXT: ${Date.now()}]`;
+    log(`TEST: prependContext = ${result.prependContext.length} chars`);
+  } else {
+    log(`TEST: prependContext = null`);
+  }
+  
+  // systemPrompt
+  if (Math.random() > 0.8) { // 20% шанс для теста
+    result.systemPrompt = `${testMarker} [SYSTEM_PROMPT: ${Date.now()}]`;
+    log(`TEST: systemPrompt = ${result.systemPrompt.length} chars`);
+  } else {
+    log(`TEST: systemPrompt = null`);
+  }
+  
+  // appendSystemContext
+  if (Math.random() > 0.9) { // 10% шанс для теста
+    result.appendSystemContext = `${testMarker} [APPEND_SYSTEM_CONTEXT: ${Date.now()}]`;
+    log(`TEST: appendSystemContext = ${result.appendSystemContext.length} chars`);
+  } else {
+    log(`TEST: appendSystemContext = null`);
+  }
+  
+  log(`TEST: result.keys = ${Object.keys(result).join(', ')}`);
+  
   return result;
 }
 
