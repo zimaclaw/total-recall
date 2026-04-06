@@ -331,3 +331,34 @@ if (agentId !== 'main') return;
 2. Если всё ещё виден — найти где именно он inject'ится
 3. Документировать поведение prependSystemContext для будущих разработок
 
+
+---
+
+## DEBUG режим — 2026-04-06 16:35 UTC
+
+**Цель:** возможность отладки prependSystemContext без изменения кода
+
+**Реализация:** переключатель через переменную окружения `TOTAL_RECALL_DEBUG=1`
+
+**Что показывает:**
+1. Содержимое prependSystemContext (CORE, MEMORY, SKELETON, FOCUS — есть/нет)
+2. Содержимое SESSION SKELETON (первые 500 символов)
+
+**Включение:**
+```bash
+export TOTAL_RECALL_DEBUG=1
+openclaw gateway restart
+```
+
+**Отключение:**
+```bash
+unset TOTAL_RECALL_DEBUG
+openclaw gateway restart
+```
+
+**Лог:** `/tmp/total-recall.log`
+
+**План удаления:** через 2-3 дня (2026-04-09) после подтверждения что работает
+
+**Альтернатива:** можно сделать permanent debug logging через конфиг, если нужно
+
