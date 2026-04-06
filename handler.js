@@ -240,7 +240,8 @@ export function onMessageSent(event, ctx) {
   pendingUserMessages.delete('current');
   
   if (pending) {
-    const sessionId = pending.sessionId;
+    // sessionId из ctx (agent_end) — правильный, pending.sessionId может быть устаревшим
+    const sessionId = ctx?.sessionId || pending.sessionId;
     const pendingUser = pending.content;
     
     if (!content || !sessionId) {
