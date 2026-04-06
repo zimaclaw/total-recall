@@ -228,11 +228,12 @@ export async function beforePromptBuild(event, ctx) {
 }
 
 export function onMessageSent(event, ctx) {
-  // before_message_write event: event.message.content — текст сообщения
-  // llm_output event: event.assistantTexts[0] — текст assistant response
-  const eventType = event?.type || 'unknown';
-  const content = event?.message?.content || event?.assistantTexts?.[0] || event?.content;
-  log(`onMessageSent: eventType=${eventType} content=${!!content}`);
+  // agent_end event: event.messages — массив всех сообщений сессии
+  // Берём последнее assistant сообщение
+  const lastAssistant = [...event.messages].reverse().find(m => m.role === 'assistant');
+  const content = lastAssistant?.content?.find(c => c.type === 'text')?.text;
+  
+  log(`onMessageSent: sessionId=${ctx?.sessionId} messages=${event?.messages?.length || 0} content=${!!content}`);
   
   // Берём pending из буфера (там sessionId + content)
   const pending = pendingUserMessages.get('current');
@@ -242,8 +243,8 @@ export function onMessageSent(event, ctx) {
     const sessionId = pending.sessionId;
     const pendingUser = pending.content;
     
-    if (!content) {
-      log(`before_message_write: skip pair_write — content=${!!content}`);
+    if (!content || !sessionId) {
+      log(`pair_write: skip — content=${!!content} sessionId=${sessionId}`);
       return;
     }
     

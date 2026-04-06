@@ -33,14 +33,12 @@ export default function register(api) {
     }
   });
 
-  api.on('before_message_write', (event, ctx) => {
+  api.on('agent_end', (event, ctx) => {
     try {
-      api.logger.info(`[total-recall] before_message_write: role=${event?.message?.role} sessionId=${ctx?.sessionId}`);
-      if (event?.message?.role === 'assistant') {
-        onMessageSent(event, ctx);
-      }
+      api.logger.info(`[total-recall] agent_end: sessionId=${ctx?.sessionId} messages=${event?.messages?.length || 0}`);
+      onMessageSent(event, ctx);
     } catch (err) {
-      api.logger.error(`[total-recall] before_message_write: ${err.message}`);
+      api.logger.error(`[total-recall] agent_end: ${err.message}`);
     }
   });
 }
