@@ -156,6 +156,55 @@ prependSystemContext (всё в system prompt):
 
 ---
 
+## Curator — настройки контекстного окна
+
+### Бюджет (вычисляется из openclaw.json)
+
+Параметр contextWindow читается из openclaw.json по пути `models.providers.<provider>.models[0].contextWindow`. Если не найден — fallback = CURATOR_DEFAULT_CONTEXT.
+
+Формула: `curator_budget = contextWindow - maxTokens - reserveTokensFloor = 163840 - 18432 - 30000 = ~115000 токенов`
+
+### Уровни настройки бюджета
+
+**Уровень 1 (реализовано)** — настраиваемые константы в .env.
+
+**Уровень 2 (план)** — токенные лимиты вместо счётчиков сообщений, адаптивное распределение бюджета между слотами.
+
+**Уровень 3 (возможность)** — Curator знает бюджет и распределяет динамически по приоритету слотов.
+
+### Параметры
+
+```bash
+# Контекст
+OPENCLAW_CONFIG_PATH=~/.openclaw/openclaw.json
+CURATOR_DEFAULT_CONTEXT=32000
+
+# Flashback
+FLASHBACK_CONCLUSION_LIMIT=5
+FLASHBACK_CONCLUSION_THRESHOLD=0.65
+FLASHBACK_PRINCIPLE_THRESHOLD=0.70
+FLASHBACK_META_THRESHOLD=0.80
+
+# Фокус
+FOCUS_TOP_K=5
+FOCUS_MIN_SIMILARITY=0.40
+FOCUS_MAX_TOKENS=3000
+FOCUS_PAIR_MAX_TOKENS=500
+
+# Контекст сессии
+SKELETON_TAIL_PAIRS=10
+SKELETON_SUMMARY_ENABLED=true
+SKELETON_SUMMARY_MAX_TOKENS=1000
+SKELETON_SUMMARY_CACHE=true
+
+# KB
+KB_TOP_K=10
+KB_SUMMARY_MAX_TOKENS=300
+KB_MAX_TOKENS=3000
+```
+
+---
+
 ## Граница сессии
 
 **Решение:** явный сигнал от пользователя — команда `/new`.

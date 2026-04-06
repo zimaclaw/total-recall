@@ -9,6 +9,34 @@ const REFLECT = `${DIR}/memory-reflect.py`;
 const SESSION = `${DIR}/session_store.py`;
 const KB_STORE = `${DIR}/kb_store.py`;
 const CORE_MD = '/home/ironman/.openclaw/workspace/CORE.md';
+const OPENCLAW_CONFIG_PATH = process.env.OPENCLAW_CONFIG_PATH || '/home/ironman/.openclaw/openclaw.json';
+const CURATOR_DEFAULT_CONTEXT = parseInt(process.env.CURATOR_DEFAULT_CONTEXT) || 32000;
+
+// ─── Curator бюджет ─────────────────────────────────────────────────────────
+// Чтение contextWindow из openclaw.json
+function getCuratorBudget() {
+  try {
+    const config = JSON.parse(readFileSync(OPENCLAW_CONFIG_PATH, 'utf8'));
+    // Пятница использует llamacpp
+    const provider = config?.models?.providers?.llamacpp;
+    if (!provider?.models?.[0]) {
+      log(`Curator budget: fallback to ${CURATOR_DEFAULT_CONTEXT} (no llamacpp model)`);
+      return CURATOR_DEFAULT_CONTEXT;
+    }
+    const contextWindow = provider.models[0].contextWindow;
+    const maxTokens = provider.models[0].maxTokens || 0;
+    const reserveTokensFloor = config?.agents?.defaults?.compaction?.reserveTokensFloor || 30000;
+    const budget = contextWindow - maxTokens - reserveTokensFloor;
+    log(`Curator budget: contextWindow=${contextWindow} - maxTokens=${maxTokens} - reserve=${reserveTokensFloor} = ${budget}`);
+    return budget;
+  } catch (err) {
+    log(`Curator budget: error reading ${OPENCLAW_CONFIG_PATH}: ${err.message}, fallback to ${CURATOR_DEFAULT_CONTEXT}`);
+    return CURATOR_DEFAULT_CONTEXT;
+  }
+}
+
+// Кэширование бюджета (вычисляем один раз при старте)
+const CURATOR_BUDGET = getCuratorBudget();
 
 // In-memory маппинг составного ключа → sessionId
 const sessionMap = new Map();
