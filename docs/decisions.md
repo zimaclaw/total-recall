@@ -393,12 +393,7 @@ DEBUG: prependSystemContext contains: CORE=true, MEMORY=true, SKELETON=true, FOC
 
 **Причина:** в session_store.py используется `python` вместо `python3`
 
-**Решение:** заменить `python` на `python3` в subprocess.Popen
-
-**Файлы:**
-- Рабочая версия: `~/.openclaw/skills/memory-reflect/session_store.py`
-- Репозиторий: `~/projects/total-recall/skills/session-store/session_store.py`
-- Строка 377
+**Решение:** заменить `python` на `python3` в subprocess.Popen (строка 377)
 
 ```python
 # Было:
@@ -408,9 +403,23 @@ subprocess.Popen(["python", __file__, ...])
 subprocess.Popen(["python3", __file__, ...])
 ```
 
-**Статус:** ✅ исправлено в системе и репозитории
+**Структура memory-reflect:**
+```
+~/projects/total-recall/skills/memory-reflect/
+├── .gitignore
+├── config.py
+├── kb_store.py
+├── memory-daemon.py
+├── memory-daemon.service
+├── memory-reflect.py
+├── migrate_summary.py
+├── poetry.lock
+├── pyproject.toml
+├── session_store.py  ← исправлен
+└── store.py
+```
 
-**Важно:** memory-reflect — часть проекта total-recall. session_store.py должен быть синхронизирован между:
-1. `~/.openclaw/skills/memory-reflect/session_store.py` (рабочая версия)
-2. `~/projects/total-recall/skills/session-store/session_store.py` (репозиторий)
+**Рабочая версия:** `~/.openclaw/skills/memory-reflect/` (синхронизирована с репозиторием)
+
+**Статус:** ✅ исправлено в системе и репозитории
 
