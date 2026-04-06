@@ -374,7 +374,7 @@ def cmd_pair_write(session_id: str, user_content: str, assistant_content: str):
                 
                 # Запускаем summary_build в фоне (не блокируем)
                 subprocess.Popen([
-                    "python", __file__,
+                    "python3", __file__,
                     "summary_build",
                     "--session-id", session_id,
                 ])
