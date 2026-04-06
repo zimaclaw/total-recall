@@ -228,13 +228,8 @@ export async function beforePromptBuild(event, ctx) {
     log(`TEST: prependSystemContext = null`);
   }
   
-  // prependContext — если в сообщении есть "test prependContext"
-  if (userPrompt && userPrompt.toLowerCase().includes('test prependcontext')) {
-    result.prependContext = `${testMarker} [PREPEND_CONTEXT: ${timestamp}]`;
-    log(`TEST: prependContext = ${result.prependContext.length} chars`);
-  } else {
-    log(`TEST: prependContext = null`);
-  }
+  // prependContext — ВЫКЛЮЧЕНО (тест пройден — виден в чате)
+  log(`TEST: prependContext = null (выключено)`);
   
   // systemPrompt — если в сообщении есть "test systemPrompt"
   if (userPrompt && userPrompt.toLowerCase().includes('test systemprompt')) {
