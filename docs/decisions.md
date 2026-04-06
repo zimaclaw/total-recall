@@ -194,15 +194,19 @@ const sessionId = lastKnownSessionId || pending.sessionId;
 **Цель:** записывать пары user+assistant в PostgreSQL для sliding context window.
 
 **История попыток:**
-- `agent_end` через `api.on()` → не срабатывает для TUI/webchat сессий
 - `message:sent` (файловый хук в hooks/) → не срабатывает для TUI/webchat
-- `message_sent` через `api.on()` → не срабатывает для TUI/webchat
+- `message_sent` через `api.on()` → срабатывает, но множественные вызовы на tool call'ы
+- `before_message_write` через `api.on()` → не срабатывает
 
-**Текущее решение:** `message_sent` через `api.on()` — срабатывает, но с задержкой и множественными вызовами на tool call'ы.
+**Финальное решение:** `agent_end` через `api.on()`
+- Срабатывает один раз за turn для TUI/webchat
+- event.messages содержит полный snapshot сообщений
+- content берётся из последнего assistant сообщения в event.messages
+- sessionId берётся из ctx.sessionId (доступен в agent_end напрямую)
 
-**Проблема множественных вызовов:** хук срабатывает на каждый tool call отдельно. Первый вызов — с pending user → pair_write. Следующие — без pending → fallback message_write.
+**sessionId:** lastKnownSessionId (обновляется в beforePromptBuild) используется как приоритет над pending.sessionId
 
-**Статус:** pair_write работает (sessionId правильный с 2026-04-06), но механизм хука ещё уточняется.
+**Статус:** работает. ✅
 
 ---
 
