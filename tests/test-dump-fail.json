@@ -1,9 +1,0 @@
-{
-    "task_id":       "test-fail-001",
-    "goal":          "изменить порт gateway на 9000",
-    "outcome":       "fail",
-    "reason":        "порт 9000 занят sshd, не проверил перед сменой",
-    "insight":       "перед сменой порта проверять занятость через ss -tlnp",
-    "evidence_type": "empirical",
-    "ts":            1742000000
-}

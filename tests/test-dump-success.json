@@ -1,9 +1,0 @@
-{
-    "task_id":       "test-success-001",
-    "goal":          "поменять порт nginx на 8090",
-    "outcome":       "success",
-    "reason":        "проверил занятость порта через ss -tlnp, порт был свободен",
-    "insight":       "проверять свободность порта через ss перед любым изменением",
-    "evidence_type": "empirical",
-    "ts":            1742000200
-}

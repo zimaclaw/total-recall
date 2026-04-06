@@ -1,4 +1,0 @@
-{
-  "_comment": "Changes to apply to openclaw.json",
-  "plugins.entries.openclaw-mem0.config.enableGraph": false
-}
