@@ -423,3 +423,38 @@ subprocess.Popen(["python3", __file__, ...])
 
 **Статус:** ✅ исправлено в системе и репозитории
 
+
+---
+
+## Очистка репозитория — 2026-04-06 22:58 UTC
+
+**Цель:** удалить устаревшие файлы и папки из корневого каталога
+
+**Удалено:**
+
+**Папки:**
+- `prompts/` — устаревшие промпты
+- `reports/` — отчёты по тестам
+- `tests/` — тестовые файлы
+- `config/` — устаревшие конфиги (теперь в skills/memory-reflect/)
+- `cypher/` — Cypher queries (устарели, теперь в Python)
+- `reranker-api/` — пустая папка
+- `scripts/` — устаревшие скрипты
+
+**Файлы:**
+- `REPORT.md` — устаревший отчёт
+- `TEST-REPORT.md` — устаревший отчёт
+- `handoff-2026-03-31-kb.md` — устаревший handoff
+- `lossless-claw-analysis-v2.md` — устаревший анализ
+- `lossless-claw-analysis.md` — устаревший анализ
+- `phi4-mini-load.md` — устаревший тест
+- `handler.js.backup.20260405_002856` — backup файл
+
+**Оставлено:**
+- `docs/` — актуальная документация
+- `skills/` — memory-reflect
+- `README.md`, `handler.js`, `index.js`, `openclaw.plugin.json`, `package.json`, `install.sh`, `decisions.md`
+
+**Итого:** удалено 22 файла, 4339 строк
+
+**Статус:** ✅ завершено
