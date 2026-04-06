@@ -362,3 +362,21 @@ openclaw gateway restart
 
 **Альтернатива:** можно сделать permanent debug logging через конфиг, если нужно
 
+
+---
+
+## DEBUG режим включён — 2026-04-06 16:46 UTC
+
+**Статус:** ✅ Включён через `TOTAL_RECALL_DEBUG=1`
+
+**Подтверждение:** лог показывает:
+```
+DEBUG: prependSystemContext contains: CORE=true, MEMORY=true, SKELETON=true, FOCUS=true
+```
+
+**План:**
+- Оставить включённым на 2-3 дня для мониторинга
+- Удалить через `unset TOTAL_RECALL_DEBUG` + `openclaw gateway restart` после 2026-04-09
+
+**Примечание:** DEBUG логирование не влияет на работу системы, только добавляет информацию в `/tmp/total-recall.log`
+
