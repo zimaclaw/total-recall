@@ -216,36 +216,37 @@ export async function beforePromptBuild(event, ctx) {
 
   const result = {};
   
-  // ТЕСТОВОЕ ЛОГИРОВАНИЕ — добавить уникальные фразы для проверки
+  // ТЕСТОВОЕ ЛОГИРОВАНИЕ — детерминированное тестирование по ключевым словам
   const testMarker = "### TEST_MARKER ###";
+  const timestamp = Date.now();
   
-  // prependSystemContext
+  // prependSystemContext — всегда добавляем маркер
   if (stableParts.length) {
-    result.prependSystemContext = stableParts.join('\n\n') + `\n\n${testMarker} [PREPEND_SYSTEM_CONTEXT: ${Date.now()}]`;
+    result.prependSystemContext = stableParts.join('\n\n') + `\n\n${testMarker} [PREPEND_SYSTEM_CONTEXT: ${timestamp}]`;
     log(`TEST: prependSystemContext = ${result.prependSystemContext.length} chars`);
   } else {
     log(`TEST: prependSystemContext = null`);
   }
   
-  // prependContext
-  if (Math.random() > 0.5) { // 50% шанс для теста
-    result.prependContext = `${testMarker} [PREPEND_CONTEXT: ${Date.now()}]`;
+  // prependContext — если в сообщении есть "test prependContext"
+  if (userPrompt && userPrompt.toLowerCase().includes('test prependcontext')) {
+    result.prependContext = `${testMarker} [PREPEND_CONTEXT: ${timestamp}]`;
     log(`TEST: prependContext = ${result.prependContext.length} chars`);
   } else {
     log(`TEST: prependContext = null`);
   }
   
-  // systemPrompt
-  if (Math.random() > 0.8) { // 20% шанс для теста
-    result.systemPrompt = `${testMarker} [SYSTEM_PROMPT: ${Date.now()}]`;
+  // systemPrompt — если в сообщении есть "test systemPrompt"
+  if (userPrompt && userPrompt.toLowerCase().includes('test systemprompt')) {
+    result.systemPrompt = `${testMarker} [SYSTEM_PROMPT: ${timestamp}]`;
     log(`TEST: systemPrompt = ${result.systemPrompt.length} chars`);
   } else {
     log(`TEST: systemPrompt = null`);
   }
   
-  // appendSystemContext
-  if (Math.random() > 0.9) { // 10% шанс для теста
-    result.appendSystemContext = `${testMarker} [APPEND_SYSTEM_CONTEXT: ${Date.now()}]`;
+  // appendSystemContext — если в сообщении есть "test appendSystemContext"
+  if (userPrompt && userPrompt.toLowerCase().includes('test appendsystemcontext')) {
+    result.appendSystemContext = `${testMarker} [APPEND_SYSTEM_CONTEXT: ${timestamp}]`;
     log(`TEST: appendSystemContext = ${result.appendSystemContext.length} chars`);
   } else {
     log(`TEST: appendSystemContext = null`);
