@@ -47,6 +47,16 @@ class Settings(BaseSettings):
     reflect_trigger_hours:   int = 24   # часов без рефлексии → запустить принудительно
     reflect_poll_seconds:    int = 300  # как часто демон проверяет триггеры
 
+    # ─── PostgreSQL ────────────────────────────────────────────────────────────────
+    pg_dsn: str = "postgresql://openclaw:openclaw123@192.168.1.145:5432/openclaw"
+
+    # ─── Summary (sliding context window) ─────────────────────────────────────────
+    summary_mode:        str  = "incremental"
+    summary_threshold:   int  = 20
+    summary_model_url:   str  = "http://192.168.1.145:11434"
+    summary_model:       str  = "qwen3.5:27b-q4_K_M"
+    summary_prompt:      str  = "Сделай краткое summary диалога сохранив все важные факты, решения, договорённости и ограничения. Без лишних слов.\n\nДиалог:\n{pairs}"
+
     # ─── Байесовские пороги ───────────────────────────────────────────────────
     flashback_threshold:      float = 0.60
     lesson_conf_threshold:    float = 0.75
