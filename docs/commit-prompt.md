@@ -16,6 +16,8 @@
 
 ### Новые skills (в ~/.openclaw/skills/memory-reflect/)
 - `session_store.py` — CLI для работы с PostgreSQL session store
+- `kb_store.py` — CLI для Knowledge Base
+- `migrate_summary.py` — Миграции
 
 ## Действия
 
@@ -29,10 +31,11 @@
    ```
    Если есть diff — скопируй из extensions в repo (extensions — рабочая версия).
 
-3. Добавь `session_store.py` в репо:
+3. Синхронизируй memory-reflect:
    ```bash
-   mkdir -p ~/projects/total-recall/skills/session-store
-   cp ~/.openclaw/skills/memory-reflect/session_store.py ~/projects/total-recall/skills/session-store/
+   cp ~/.openclaw/skills/memory-reflect/session_store.py ~/projects/total-recall/skills/memory-reflect/
+   cp ~/.openclaw/skills/memory-reflect/kb_store.py ~/projects/total-recall/skills/memory-reflect/
+   cp ~/.openclaw/skills/memory-reflect/migrate_summary.py ~/projects/total-recall/skills/memory-reflect/
    ```
 
 4. Создай коммит:
