@@ -395,7 +395,10 @@ DEBUG: prependSystemContext contains: CORE=true, MEMORY=true, SKELETON=true, FOC
 
 **Решение:** заменить `python` на `python3` в subprocess.Popen
 
-**Файл:** `/home/ironman/.openclaw/skills/memory-reflect/session_store.py` строка 377
+**Файлы:**
+- Рабочая версия: `~/.openclaw/skills/memory-reflect/session_store.py`
+- Репозиторий: `~/projects/total-recall/skills/session-store/session_store.py`
+- Строка 377
 
 ```python
 # Было:
@@ -405,5 +408,9 @@ subprocess.Popen(["python", __file__, ...])
 subprocess.Popen(["python3", __file__, ...])
 ```
 
-**Статус:** ✅ исправлено
+**Статус:** ✅ исправлено в системе и репозитории
+
+**Важно:** memory-reflect — часть проекта total-recall. session_store.py должен быть синхронизирован между:
+1. `~/.openclaw/skills/memory-reflect/session_store.py` (рабочая версия)
+2. `~/projects/total-recall/skills/session-store/session_store.py` (репозиторий)
 
