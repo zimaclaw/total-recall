@@ -217,6 +217,28 @@ export async function beforePromptBuild(event, ctx) {
   const result = {};
   if (stableParts.length) {
     result.prependSystemContext = stableParts.join('\n\n');
+    
+    // DEBUG: переключатель через TOTAL_RECALL_DEBUG=1
+    const debugMode = process.env.TOTAL_RECALL_DEBUG === '1';
+    if (debugMode) {
+      const hasSkeleton = result.prependSystemContext.includes('SESSION SKELETON');
+      const hasFocus = result.prependSystemContext.includes('SESSION FOCUS');
+      const hasCore = result.prependSystemContext.includes('CORE.md');
+      const hasMemory = result.prependSystemContext.includes('MEMORY CONTEXT');
+      log(`DEBUG: prependSystemContext contains: CORE=${hasCore}, MEMORY=${hasMemory}, SKELETON=${hasSkeleton}, FOCUS=${hasFocus}`);
+      
+      // Показать содержимое SESSION SKELETON (первые 500 символов)
+      if (hasSkeleton) {
+        const skeletonStart = result.prependSystemContext.indexOf('=== SESSION SKELETON ===');
+        if (skeletonStart !== -1) {
+          const skeletonEnd = result.prependSystemContext.indexOf('=== END SESSION SKELETON ===');
+          if (skeletonEnd !== -1) {
+            const skeletonContent = result.prependSystemContext.substring(skeletonStart, skeletonEnd + 28);
+            log(`DEBUG: SESSION SKELETON content (${skeletonContent.length} chars):\n${skeletonContent.substring(0, 500)}${skeletonContent.length > 500 ? '...' : ''}`);
+          }
+        }
+      }
+    }
   }
   return result;
 }
