@@ -250,7 +250,6 @@ export function onMessageSent(event, ctx) {
     
     runPython(SESSION, ['session_start', '--session-id', sessionId], 5000);
     
-    // pair_write — создаём пару user+assistant
     log(`pair_write: sessionId=${sessionId} user=${pendingUser.length} assistant=${content.length}`);
     runPython(SESSION, [
       'pair_write',
@@ -263,14 +262,13 @@ export function onMessageSent(event, ctx) {
     const sessionId = event?.sessionId || ctx?.sessionId || resolveSessionId(ctx, event);
     
     if (!content || !sessionId) {
-      log(`before_message_write: skip message_write — content=${!!content} sessionId=${sessionId}`);
+      log(`message_write: skip — content=${!!content} sessionId=${sessionId}`);
       return;
     }
     
     runPython(SESSION, ['session_start', '--session-id', sessionId], 5000);
     
-    // Fallback — пишем как одиночное сообщение
-    log(`pair_write: no pending user for ${sessionId} fallback to message_write`);
+    log(`message_write: sessionId=${sessionId} assistant=${content.length}`);
     runPython(SESSION, [
       'message_write',
       '--session-id', sessionId,
