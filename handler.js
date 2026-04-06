@@ -241,13 +241,14 @@ export async function beforePromptBuild(event, ctx) {
 --- END SYSTEM_PROMPT TEST ---`;
   log(`TEST: systemPrompt = ${result.systemPrompt.length} chars (ВСЕГДА, ${now})`);
   
-  // appendSystemContext — если в сообщении есть "test appendSystemContext"
-  if (userPrompt && userPrompt.toLowerCase().includes('test appendsystemcontext')) {
-    result.appendSystemContext = `${testMarker} [APPEND_SYSTEM_CONTEXT: ${timestamp}]`;
-    log(`TEST: appendSystemContext = ${result.appendSystemContext.length} chars`);
-  } else {
-    log(`TEST: appendSystemContext = null`);
-  }
+  // appendSystemContext — ВСЕГДА для теста (с датой и временем)
+  const now2 = new Date().toISOString();
+  result.appendSystemContext = `${testMarker}
+[APPEND_SYSTEM_CONTEXT: ${now2}]
+[DATE: ${now2.split('T')[0]}]
+[TIME: ${now2.split('T')[1]?.split('.')[0]}]
+--- END APPEND_SYSTEM_CONTEXT TEST ---`;
+  log(`TEST: appendSystemContext = ${result.appendSystemContext.length} chars (ВСЕГДА, ${now2})`);
   
   log(`TEST: result.keys = ${Object.keys(result).join(', ')}`);
   
