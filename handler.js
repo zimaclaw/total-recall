@@ -215,43 +215,9 @@ export async function beforePromptBuild(event, ctx) {
   log(`before_prompt_build: ${Date.now() - t0}ms | parts=${totalParts} session=${sessionId || 'none'}`);
 
   const result = {};
-  
-  // ТЕСТОВОЕ ЛОГИРОВАНИЕ — детерминированное тестирование по ключевым словам
-  const testMarker = "### TEST_MARKER ###";
-  const timestamp = Date.now();
-  
-  // prependSystemContext — всегда добавляем маркер
   if (stableParts.length) {
-    result.prependSystemContext = stableParts.join('\n\n') + `\n\n${testMarker} [PREPEND_SYSTEM_CONTEXT: ${timestamp}]`;
-    log(`TEST: prependSystemContext = ${result.prependSystemContext.length} chars`);
-  } else {
-    log(`TEST: prependSystemContext = null`);
+    result.prependSystemContext = stableParts.join('\n\n');
   }
-  
-  // prependContext — ВЫКЛЮЧЕНО (тест пройден — виден в чате)
-  log(`TEST: prependContext = null (выключено)`);
-  
-  // systemPrompt — ВСЕГДА для теста (с датой и временем)
-  const now = new Date().toISOString();
-  result.systemPrompt = `${testMarker}
-[SYSTEM_PROMPT: ${now}]
-[DATE: ${now.split('T')[0]}]
-[TIME: ${now.split('T')[1]?.split('.')[0]}]
-[SESSION_ID: ${sessionId || 'none'}]
---- END SYSTEM_PROMPT TEST ---`;
-  log(`TEST: systemPrompt = ${result.systemPrompt.length} chars (ВСЕГДА, ${now})`);
-  
-  // appendSystemContext — ВСЕГДА для теста (с датой и временем)
-  const now2 = new Date().toISOString();
-  result.appendSystemContext = `${testMarker}
-[APPEND_SYSTEM_CONTEXT: ${now2}]
-[DATE: ${now2.split('T')[0]}]
-[TIME: ${now2.split('T')[1]?.split('.')[0]}]
---- END APPEND_SYSTEM_CONTEXT TEST ---`;
-  log(`TEST: appendSystemContext = ${result.appendSystemContext.length} chars (ВСЕГДА, ${now2})`);
-  
-  log(`TEST: result.keys = ${Object.keys(result).join(', ')}`);
-  
   return result;
 }
 
