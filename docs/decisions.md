@@ -384,3 +384,26 @@ DEBUG: prependSystemContext contains: CORE=true, MEMORY=true, SKELETON=true, FOC
 
 **Примечание:** DEBUG логирование не влияет на работу системы, только добавляет информацию в `/tmp/total-recall.log`
 
+
+---
+
+## Ошибка memory-reflect — 2026-04-06 17:17 UTC
+
+**Проблема:** `FileNotFoundError: [Errno 2] No such file or directory: 'python'`
+
+**Причина:** в session_store.py используется `python` вместо `python3`
+
+**Решение:** заменить `python` на `python3` в subprocess.Popen
+
+**Файл:** `/home/ironman/.openclaw/skills/memory-reflect/session_store.py` строка 377
+
+```python
+# Было:
+subprocess.Popen(["python", __file__, ...])
+
+# Стало:
+subprocess.Popen(["python3", __file__, ...])
+```
+
+**Статус:** ✅ исправлено
+
