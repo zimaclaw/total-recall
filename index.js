@@ -1,5 +1,4 @@
 import {
-  onCommandNew,
   onMessageReceived,
   beforePromptBuild,
   onMessageSent,
@@ -14,12 +13,6 @@ export default function register(api) {
   }
 
   api.logger.info('[total-recall] initialized');
-
-  api.on('command:new', (event, ctx) => {
-    try { onCommandNew(event, ctx); } catch (err) {
-      api.logger.error(`[total-recall] command:new: ${err.message}`);
-    }
-  });
 
   api.on('message_received', (event, ctx) => {
     try { onMessageReceived(event, ctx); } catch (err) {
@@ -40,9 +33,14 @@ export default function register(api) {
     }
   });
 
-  api.on('message_sent', (event, ctx) => {
-    try { onMessageSent(event, ctx); } catch (err) {
-      api.logger.error(`[total-recall] message_sent: ${err.message}`);
+  api.on('before_message_write', (event, ctx) => {
+    try {
+      api.logger.info(`[total-recall] before_message_write: role=${event?.message?.role} sessionId=${ctx?.sessionId}`);
+      if (event?.message?.role === 'assistant') {
+        onMessageSent(event, ctx);
+      }
+    } catch (err) {
+      api.logger.error(`[total-recall] before_message_write: ${err.message}`);
     }
   });
 }

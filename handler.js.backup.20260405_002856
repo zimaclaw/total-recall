@@ -1,6 +1,5 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync, appendFileSync } from 'node:fs';
-import { homedir } from 'node:os';
 
 const LOG     = '/tmp/total-recall.log';
 const DIR     = '/home/ironman/.openclaw/skills/memory-reflect';
@@ -12,11 +11,6 @@ const CORE_MD = '/home/ironman/.openclaw/workspace/CORE.md';
 
 // In-memory маппинг составного ключа → sessionId
 const sessionMap = new Map();
-
-let lastKnownSessionId = null; // Глобальная — последний известный правильный sessionId
-
-// In-memory буфер pending user messages для pair_write
-const pendingUserMessages = new Map(); // sessionId → content
 
 function log(msg) {
   appendFileSync(LOG, `[${new Date().toISOString()}] ${msg}\n`);
@@ -46,26 +40,21 @@ function parseJson(out) {
 
 function resolveSessionId(ctx, event) {
   if (ctx?.sessionId) return ctx.sessionId;
-  if (lastKnownSessionId) return lastKnownSessionId;
   if (ctx?.conversationId) return ctx.conversationId;
   // Читаем sessionId из sessions.json по sessionKey
   try {
+    const { readFileSync } = require('node:fs');
+    const { homedir } = require('node:os');
     const storePath = `${homedir()}/.openclaw/agents/main/sessions/sessions.json`;
     const store = JSON.parse(readFileSync(storePath, 'utf8'));
-    // Приоритет 1: активная TUI сессия
-    for (const [key, entry] of Object.entries(store)) {
-      if (entry?.sessionId && key.includes('tui-')) {
-        return entry.sessionId;
-      }
-    }
-    // Приоритет 2: поиск по channelId
+    // Пробуем все ключи — берём первый у которого есть sessionId
     const channelId = ctx?.channelId || 'webchat';
     for (const [key, entry] of Object.entries(store)) {
       if (entry?.sessionId && key.includes(channelId)) {
         return entry.sessionId;
       }
     }
-    // Fallback — первый найденный
+    // Fallback — берём первый sessionId
     const first = Object.values(store).find(e => e?.sessionId);
     if (first) return first.sessionId;
   } catch(e) {
@@ -169,15 +158,16 @@ export function onMessageReceived(event, ctx) {
   log(`message_received: sessionId=${sessionId} content=${!!content}`);
   if (!content || !sessionId) return;
   runPython(SESSION, ['session_start', '--session-id', sessionId], 5000);
-  // Сохраняем sessionId + content вместе для последующего pair_write
-  pendingUserMessages.set('current', { sessionId, content });
-  log(`pending_user: sessionId=${sessionId} saved (${content.length} chars)`);
+  runPython(SESSION, [
+    'message_write',
+    '--session-id', sessionId,
+    '--role', 'user',
+    '--content', content,
+  ], 12000);
 }
 
 export async function beforePromptBuild(event, ctx) {
   const t0 = Date.now();
-  
-  if (ctx?.sessionId) lastKnownSessionId = ctx.sessionId;
   const userPrompt = event?.prompt || '';
   if (!userPrompt) return {};
 
@@ -228,53 +218,14 @@ export async function beforePromptBuild(event, ctx) {
 }
 
 export function onMessageSent(event, ctx) {
-  // before_message_write event: event.message.content — текст сообщения
-  // llm_output event: event.assistantTexts[0] — текст assistant response
-  const eventType = event?.type || 'unknown';
-  const content = event?.message?.content || event?.assistantTexts?.[0] || event?.content;
-  log(`onMessageSent: eventType=${eventType} content=${!!content}`);
-  
-  // Берём pending из буфера (там sessionId + content)
-  const pending = pendingUserMessages.get('current');
-  pendingUserMessages.delete('current');
-  
-  if (pending) {
-    const sessionId = pending.sessionId;
-    const pendingUser = pending.content;
-    
-    if (!content) {
-      log(`before_message_write: skip pair_write — content=${!!content}`);
-      return;
-    }
-    
-    runPython(SESSION, ['session_start', '--session-id', sessionId], 5000);
-    
-    // pair_write — создаём пару user+assistant
-    log(`pair_write: sessionId=${sessionId} user=${pendingUser.length} assistant=${content.length}`);
-    runPython(SESSION, [
-      'pair_write',
-      '--session-id', sessionId,
-      '--user-content', pendingUser,
-      '--assistant-content', content,
-    ], 15000);
-  } else {
-    // Fallback — нет pending user, используем resolveSessionId
-    const sessionId = event?.sessionId || ctx?.sessionId || resolveSessionId(ctx, event);
-    
-    if (!content || !sessionId) {
-      log(`before_message_write: skip message_write — content=${!!content} sessionId=${sessionId}`);
-      return;
-    }
-    
-    runPython(SESSION, ['session_start', '--session-id', sessionId], 5000);
-    
-    // Fallback — пишем как одиночное сообщение
-    log(`pair_write: no pending user for ${sessionId} fallback to message_write`);
-    runPython(SESSION, [
-      'message_write',
-      '--session-id', sessionId,
-      '--role', 'assistant',
-      '--content', content,
-    ], 5000);
-  }
+  const content = event?.content;
+  const sessionId = resolveSessionId(ctx, event);
+  if (!content || !sessionId) return;
+  runPython(SESSION, ['session_start', '--session-id', sessionId], 5000);
+  runPython(SESSION, [
+    'message_write',
+    '--session-id', sessionId,
+    '--role', 'assistant',
+    '--content', content,
+  ], 5000);
 }
