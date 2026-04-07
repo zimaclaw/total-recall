@@ -850,17 +850,16 @@ def cmd_get_skeleton(session_id: str):
                     # Вызываем LLM через ollama
                     try:
                         resp = httpx.post(
-                            f"{settings.ollama_url}",
+                            f"{settings.summary_model_url}",
                             json={
-                                "model": settings.reflect_model,
+                                "model": settings.summary_model,
                                 "messages": [{"role": "user", "content": prompt}],
-                                "stream": False,
-                                "options": {"num_predict": SKELETON_SUMMARY_MAX_TOKENS}
+                                "max_tokens": SKELETON_SUMMARY_MAX_TOKENS
                             },
                             timeout=120.0,
                         )
                         resp.raise_for_status()
-                        summary = resp.json()["message"]["content"]
+                        summary = resp.json()["choices"][0]["message"]["content"]
                         
                         # Сохраняем в кэш
                         if SKELETON_SUMMARY_CACHE:
