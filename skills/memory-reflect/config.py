@@ -58,6 +58,34 @@ class Settings(BaseSettings):
     principle_conf_threshold: float = 0.70  # минимальный avg confidence кластера
     meta_min_cluster:         int   = 2     # минимум Principle → Meta
 
+    # ─── Curator — Контекст ──────────────────────────────────────────────────
+    openclaw_config_path: str = "/home/ironman/.openclaw/openclaw.json"
+    curator_default_context: int = 32000
+
+    # ─── Curator — Flashback ─────────────────────────────────────────────────
+    flashback_conclusion_limit: int = 5
+    flashback_conclusion_threshold: float = 0.65
+    flashback_principle_threshold: float = 0.70
+    flashback_meta_threshold: float = 0.80
+
+    # ─── Curator — Фокус ─────────────────────────────────────────────────────
+    focus_top_k: int = 5
+    focus_min_similarity: float = 0.40
+    focus_max_tokens: int = 3000
+    focus_pair_max_tokens: int = 500
+
+    # ─── Curator — Skeleton ──────────────────────────────────────────────────
+    skeleton_tail_pairs: int = 10
+    skeleton_summary_max_pairs: int = 8
+    skeleton_summary_max_tokens: int = 2000
+    skeleton_summary_enabled: bool = True
+    skeleton_summary_cache: bool = True
+
+    # ─── Curator — KB ────────────────────────────────────────────────────────
+    kb_top_k: int = 10
+    kb_summary_max_tokens: int = 300
+    kb_max_tokens: int = 3000
+
 
 # Синглтон — импортируется один раз при старте
 # Если .env не найден или обязательное поле не задано — ValidationError при импорте
