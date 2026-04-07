@@ -1,10 +1,16 @@
 import { execSync } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { writeFileSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 
 const LOG = '/tmp/total-recall.log';
 const MEMORY_DIR = '/home/ironman/.openclaw/skills/memory-reflect';
 const PYTHON = '/home/ironman/.openclaw/skills/memory-reflect/.venv/bin/python';
 const SCRIPT = '/home/ironman/.openclaw/skills/memory-reflect/memory-reflect.py';
+const SESSION_STORE = '/home/ironman/.openclaw/skills/memory-reflect/session_store.py';
+const CORE_MD = '/home/ironman/.openclaw/workspace/CORE.md';
+
+// Глобальная переменная для sessionId
+let lastKnownSessionId = null;
 
 function log(msg) {
   writeFileSync(LOG, `[${new Date().toISOString()}] ${msg}\n`, { flag: 'a' });
@@ -70,19 +76,136 @@ function formatContext(raw, category) {
   return `=== MEMORY CONTEXT [${category}] ===\n${lines}\n=== END MEMORY CONTEXT ===`;
 }
 
-export async function beforePromptBuild(event) {
-  const prompt = event?.prompt || '';
-  if (!prompt) return {};
-  
-  const category = inferCategory(prompt);
-  log(`category=${category} prompt="${prompt.substring(0, 60)}"`);
-  
-  const raw = runFlashback(category);
-  const prependContext = formatContext(raw, category);
-  
-  if (prependContext) {
-    log(`injected ${prependContext.length} chars`);
+// ─── Helpers ──────────────────────────────────────────────────────────────
+
+function runPython(script, args, timeoutMs = 8000) {
+  try {
+    return execSync(PYTHON, [script, ...args], {
+      timeout: timeoutMs,
+      cwd: MEMORY_DIR,
+      encoding: 'utf8',
+    }).trim();
+  } catch (err) {
+    log(`ERROR ${script} ${args[0]}: ${err.message}`);
+    return null;
   }
+}
+
+function parseJson(out) {
+  try { return JSON.parse(out); } catch { return null; }
+}
+
+function resolveSessionId(ctx, event) {
+  if (ctx?.sessionId) return ctx.sessionId;
+  if (lastKnownSessionId) return lastKnownSessionId;
+  if (ctx?.conversationId) return ctx.conversationId;
+  try {
+    const storePath = `${homedir()}/.openclaw/agents/main/sessions/sessions.json`;
+    const store = JSON.parse(readFileSync(storePath, 'utf8'));
+    for (const [key, entry] of Object.entries(store)) {
+      if (entry?.sessionId && key.includes('tui-')) {
+        return entry.sessionId;
+      }
+    }
+    const first = Object.values(store).find(e => e?.sessionId);
+    if (first) return first.sessionId;
+  } catch(e) {
+    log('resolveSessionId error: ' + e.message);
+  }
+  return null;
+}
+
+function getCoremd() {
+  try { return readFileSync(CORE_MD, 'utf8').trim(); } catch { return null; }
+}
+
+function getFlashback(prompt) {
+  const out = runPython(SCRIPT, ['--flashback', '--query', prompt]);
+  if (!out?.trim()) return null;
+  const lines = out.split('\n')
+    .filter(l => !/\d{4}-\d{2}-\d{2}.*\[(INFO|WARNING|ERROR)\]/.test(l) && l.trim())
+    .join('\n').trim();
+  return lines ? { text: lines } : null;
+}
+
+function getSkeleton(sessionId) {
+  const out = runPython(SESSION_STORE, ['get_skeleton', '--session-id', sessionId]);
+  const data = parseJson(out);
+  if (!data) return null;
   
-  return { prependContext };
+  const parts = [];
+  if (data.summary) {
+    parts.push('[SUMMARY]');
+    parts.push(data.summary);
+    parts.push('');
+  }
+  parts.push('[RECENT]');
+  parts.push(data.tail);
+  
+  return parts.join('\n');
+}
+
+function getFocus(sessionId, prompt) {
+  const out = runPython(SESSION_STORE, ['focus', '--session-id', sessionId, '--query', prompt]);
+  const data = parseJson(out);
+  return data?.focus || null;
+}
+
+function block(title, content) {
+  return `=== ${title} ===\n${content}\n=== END ${title} ===`;
+}
+
+export async function beforePromptBuild(event, ctx) {
+  const t0 = Date.now();
+  
+  if (ctx?.sessionId) lastKnownSessionId = ctx.sessionId;
+  const userPrompt = event?.prompt || '';
+  if (!userPrompt) return {};
+
+  const sessionId = resolveSessionId(ctx, event);
+  log(`before_prompt_build: sessionKey=${ctx?.sessionKey} sessionId=${ctx?.sessionId} agentId=${ctx?.agentId}`);
+
+  const stableParts = [];
+  const coremd = getCoremd();
+  if (coremd) stableParts.push(block('CORE', coremd));
+
+  const fb = getFlashback(userPrompt);
+  if (fb) stableParts.push(block('MEMORY CONTEXT', fb.text));
+
+  if (sessionId) {
+    const skeleton = getSkeleton(sessionId);
+    if (skeleton) stableParts.push(block('SESSION SKELETON', skeleton));
+
+    const focus = getFocus(sessionId, userPrompt);
+    if (focus) stableParts.push(block('SESSION FOCUS', focus));
+  }
+
+  const totalParts = stableParts.length;
+  log(`before_prompt_build: ${Date.now() - t0}ms | parts=${totalParts} session=${sessionId || 'none'}`);
+
+  const result = {};
+  if (stableParts.length) {
+    result.prependSystemContext = stableParts.join('\n\n');
+    
+    const debugMode = process.env.TOTAL_RECALL_DEBUG === '1';
+    if (debugMode) {
+      const hasSkeleton = result.prependSystemContext.includes('SESSION SKELETON');
+      const hasFocus = result.prependSystemContext.includes('SESSION FOCUS');
+      const hasCore = result.prependSystemContext.includes('CORE.md');
+      const hasMemory = result.prependSystemContext.includes('MEMORY CONTEXT');
+      log(`DEBUG: prependSystemContext contains: CORE=${hasCore}, MEMORY=${hasMemory}, SKELETON=${hasSkeleton}, FOCUS=${hasFocus}`);
+      
+      if (hasSkeleton) {
+        const skeletonStart = result.prependSystemContext.indexOf('=== SESSION SKELETON ===');
+        if (skeletonStart !== -1) {
+          const skeletonEnd = result.prependSystemContext.indexOf('=== END SESSION SKELETON ===');
+          if (skeletonEnd !== -1) {
+            const skeletonContent = result.prependSystemContext.substring(skeletonStart, skeletonEnd + 28);
+            log(`DEBUG: SESSION SKELETON content (${skeletonContent.length} chars):\n${skeletonContent.substring(0, 500)}${skeletonContent.length > 500 ? '...' : ''}`);
+          }
+        }
+      }
+    }
+  }
+  return result;
 }
