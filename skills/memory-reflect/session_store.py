@@ -761,7 +761,7 @@ def cmd_get_skeleton(session_id: str):
     Получает скелет сессии: summary (если нужно) + tail пар.
     
     Логика:
-    1. Получаем все пары сессии из session_pairs ORDER BY id ASC
+    1. Получаем все пары сессии из session_messages GROUP BY pair_id ORDER BY MIN(ts) ASC
     2. M = количество пар
     3. Если M <= SKELETON_TAIL_PAIRS: вернуть все пары дословно, summary не нужен
     4. Если M > SKELETON_TAIL_PAIRS:
@@ -777,7 +777,7 @@ def cmd_get_skeleton(session_id: str):
     """
     with get_conn() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            # Получаем все пары сессии ORDER BY id ASC
+            # Получаем все пары сессии ORDER BY MIN(ts) ASC
             cur.execute("""
                 SELECT pair_id, MIN(ts) as pair_ts
                 FROM session_messages
@@ -871,6 +871,7 @@ def cmd_get_skeleton(session_id: str):
                             """, (cache_key, summary))
                     except Exception as e:
                         # Если LLM не сработал — возвращаем без summary
+                        log(f"get_skeleton LLM error: {e}")
                         summary = None
                 else:
                     summary = None
