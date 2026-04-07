@@ -85,7 +85,9 @@ function runPython(script, args, timeoutMs = 8000) {
       cwd: MEMORY_DIR,
       encoding: 'utf8',
     });
-    return typeof result === 'string' ? result.trim() : String(result).trim();
+    // Node v22 может возвращать Buffer вместо строки
+    const str = Buffer.isBuffer(result) ? result.toString('utf8') : String(result);
+    return str.trim();
   } catch (err) {
     log(`ERROR ${script} ${args[0]}: ${err.message}`);
     return null;
