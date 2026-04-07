@@ -80,11 +80,12 @@ function formatContext(raw, category) {
 
 function runPython(script, args, timeoutMs = 8000) {
   try {
-    return execSync(PYTHON, [script, ...args], {
+    const result = execSync(PYTHON, [script, ...args], {
       timeout: timeoutMs,
       cwd: MEMORY_DIR,
       encoding: 'utf8',
-    }).trim();
+    });
+    return typeof result === 'string' ? result.trim() : String(result).trim();
   } catch (err) {
     log(`ERROR ${script} ${args[0]}: ${err.message}`);
     return null;
