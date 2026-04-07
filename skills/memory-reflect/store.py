@@ -421,6 +421,43 @@ class Neo4jStore:
 
         return None
 
+    def _create_conclusion_embedding(self, conclusion_id: str, insight: str):
+        """Создать embedding для Conclusion если не существует."""
+        # Проверить существует ли embedding
+        existing = self.run("""
+            MATCH (c:Conclusion {conclusion_id: $id})
+            RETURN c.embedding IS NOT NULL as has_embedding
+        """, id=conclusion_id)
+        
+        if existing and existing[0]["has_embedding"]:
+            return
+        
+        # Создать embedding через ollama
+        try:
+            import requests
+            import os
+            
+            embed_url = os.getenv('OLLAMA_EMBEDDINGS_URL', 'http://192.168.1.145:11435/api/embeddings')
+            model = os.getenv('OLLAMA_EMBEDDINGS_MODEL', 'bge-m3')
+            
+            response = requests.post(
+                embed_url,
+                json={"model": model, "prompt": insight},
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                embedding = response.json()["embedding"]
+                self.run("""
+                    MATCH (c:Conclusion {conclusion_id: $id})
+                    SET c.embedding = $embedding
+                """, id=conclusion_id, embedding=embedding)
+                log.debug(f"Created embedding for Conclusion: {conclusion_id[:8]}...")
+            else:
+                log.warning(f"Failed to create embedding: {response.status_code}")
+        except Exception as e:
+            log.warning(f"Failed to create embedding: {e}")
+
     def upsert_conclusion(self, task_id: str, evidence_id: str,
                           dump: dict, category: str, mem0_id: str) -> str:
         insight       = dump.get("insight", "")
@@ -469,6 +506,9 @@ class Neo4jStore:
 
         # Инкремент счётчика для триггера рефлексии
         self._increment_reflection_counter()
+
+        # Создать embedding для Conclusion (если не существует)
+        self._create_conclusion_embedding(conclusion_id, insight)
 
         log.info(f"Conclusion: {conclusion_id} conf={prior:.2f} "
                  f"type={evidence_type} decay={decay_rate:.6f}")
