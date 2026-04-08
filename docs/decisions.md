@@ -1,6 +1,6 @@
 # Архитектурные решения — OpenClaw Personal Assistant
 
-*Зафиксированные решения и отказы. Обновлено: 2026-04-06*
+*Зафиксированные решения и отказы. Обновлено: 2026-04-08*
 
 ---
 
@@ -466,6 +466,87 @@ DEBUG: prependSystemContext contains: CORE=true, MEMORY=true, SKELETON=true, FOC
 
 **Примечание:** DEBUG логирование не влияет на работу системы, только добавляет информацию в `/tmp/total-recall.log`
 
+---
+
+## SESSION SKELETON — summary + tail (2026-04-08)
+
+**Проблема:** SESSION SKELETON подавал все промпты пользователя из сессии без сжатия. При длинных сессиях (>50K токенов) это занимало слишком много места в контекстном окне.
+
+**Решение:** двухуровневая подача скелета:
+1. **Summary** — сжатие всей сессии через LLM (один вызов)
+2. **Tail** — последние N пар промптов пользователя (без сжатия)
+
+**Реализация:**
+- `getSkeleton()` в handler.js теперь вызывает `cmd_skeleton` с параметрами:
+  - `--tail` — количество последних пар (по умолчанию 10)
+  - `--summary` — флаг включения summary (по умолчанию true)
+  - `--cache` — кэш summary в файл (по умолчанию true)
+- `cmd_skeleton` в session_store.py:
+  - Генерирует summary через Ollama (модель qwen3.5:27b-q4_K_M-N2, контекст 40960)
+  - Кэширует summary в `~/.openclaw/workspace/skeleton-summary-{session_id}.md`
+  - Возвращает JSON: `{summary: string, tail: [{user, assistant}]}`
+- Форматирование в handler.js:
+  - Summary подаётся как блок `=== SESSION SUMMARY ===`
+  - Tail подаётся как `=== SESSION SKELETON ===`
+
+**Параметры:**
+```bash
+SKELETON_TAIL_PAIRS=10              # количество последних пар
+SKELETON_SUMMARY_ENABLED=true       # включить summary
+SKELETON_SUMMARY_MAX_TOKENS=1000    # лимит токенов для summary
+SKELETON_SUMMARY_CACHE=true         # кэшировать summary
+```
+
+**Эффект:**
+- Summary сжимает сессию до ~1000 токенов (вместо 50K+)
+- Tail даёт свежий контекст без сжатия
+- Кэш summary ускоряет повторные вызовы
+
+**Статус:** ✅ реализовано и протестировано
+
+---
+
+## Embeddings для Conclusions — автоматическое создание (2026-04-07)
+
+**Проблема:** 11 из 68 Conclusions не имели embedding (coverage 84%). Новые Conclusions не получали embedding автоматически.
+
+**Причина:** embedding не создавались в `upsert_conclusion()` — требовался отдельный вызов.
+
+**Решение:**
+1. Добавлен метод `_create_conclusion_embedding()` в `Neo4jStore` (store.py)
+2. Вызов `_create_conclusion_embedding()` добавлен в `upsert_conclusion()` после создания Conclusion
+3. Создан скрипт `create_missing_embeddings.py` для существующих Conclusions без embedding
+
+**Результат:**
+- ✅ Создано 11 embedding для существующих Conclusions
+- ✅ Coverage: 100% (68/68 Conclusions имеют embedding)
+- ✅ Новые Conclusions автоматически получают embedding при создании
+
+**Файлы:**
+- `skills/memory-reflect/store.py` — добавлен `_create_conclusion_embedding()`
+- `skills/memory-reflect/create_missing_embeddings.py` — новый скрипт
+
+**Статус:** ✅ решено
+
+---
+
+## Hook total-recall-message-sent — удалён (2026-04-07)
+
+**Проблема:** файловый хук в `~/.openclaw/hooks/total-recall-message-sent/` не срабатывал для webchat/TUI.
+
+**Причина:** webchat не генерирует событие `message:sent` для internal hooks.
+
+**Решение:**
+1. Реализован `onMessageSent` через `agent_end` в extensions handler.js
+2. Используется `pendingUserMessages` in-memory Map для буферизации user сообщений
+3. Hook удалён из `~/.openclaw/hooks/`
+
+**Результат:**
+- ✅ Hook total-recall-message-sent удалён
+- ✅ onMessageSent в extensions работает (проверено через pair_write)
+- ✅ Нет дублирования логики
+
+**Статус:** ✅ решено
 
 ---
 
