@@ -907,7 +907,7 @@ def main():
     elif args.cmd == "pair_write":
         cmd_pair_write(args.session_id, args.user_content, args.assistant_content)
     elif args.cmd == "skeleton":
-        cmd_skeleton(args.session_id, args.max_tokens)
+        cmd_skeleton(args.session_id)
     elif args.cmd == "focus":
         cmd_focus(args.session_id, args.query, args.top_k, args.min_score)
     elif args.cmd == "focus_simple":
