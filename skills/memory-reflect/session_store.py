@@ -14,6 +14,8 @@ import psycopg2
 import psycopg2.extras
 from pathlib import Path
 from config import settings
+from dotenv import load_dotenv
+load_dotenv(Path(__file__).parent / '.env')
 
 # ─── Конфиг ────────────────────────────────────────────────────────────────
 
