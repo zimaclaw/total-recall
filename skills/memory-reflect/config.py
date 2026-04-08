@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     ollama_url:    str = "http://localhost:11434/api/chat"
     reflect_model: str = "qwen3:14b"
 
+    # ─── Ollama Base URL ─────────────────────────────────────────────────────
+    ollama_base_url: str = "http://192.168.1.145:11434"
+
     # ─── Пути ─────────────────────────────────────────────────────────────────
     dump_dir: Path = Path("/home/ironman/.openclaw/workspace/memory/dumps")
     log_dir:  Path = Path("/home/ironman/.openclaw/workspace/logs")

@@ -8,6 +8,7 @@ import argparse
 import subprocess
 import uuid
 import re
+import os
 import httpx
 import psycopg2
 import psycopg2.extras
@@ -394,29 +395,136 @@ def cmd_pair_write(session_id: str, user_content: str, assistant_content: str):
     }))
 
 
-def cmd_skeleton(session_id: str, max_tokens: int = 2000):
-    limit_chars = max_tokens * 4
+def cmd_skeleton(session_id: str):
+    tail_pairs = int(os.getenv('SKELETON_TAIL_PAIRS', 10))
+    summary_max_pairs = int(os.getenv('SKELETON_SUMMARY_MAX_PAIRS', 8))
+    summary_enabled = os.getenv('SKELETON_SUMMARY_ENABLED', 'true').lower() == 'true'
+
     with get_conn() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute("""
-                SELECT content, ts
+                SELECT pair_id,
+                    MAX(CASE WHEN role='user' THEN content END) as user_content,
+                    MAX(CASE WHEN role='assistant' THEN content END) as assistant_content,
+                    MAX(ts) as ts
                 FROM session_messages
-                WHERE session_id = %s AND role = 'user'
-                ORDER BY ts ASC
+                WHERE session_id = %s AND pair_id IS NOT NULL
+                GROUP BY pair_id
+                ORDER BY MAX(ts) ASC
             """, (session_id,))
-            rows = cur.fetchall()
+            pairs = cur.fetchall()
 
-    if not rows:
-        print(json.dumps({"skeleton": ""}))
+    M = len(pairs)
+
+    if M == 0:
+        print(json.dumps({"summary": None, "tail": ""}))
         return
 
-    lines = [f"[{r['ts'].strftime('%H:%M')}] {r['content']}" for r in rows]
-    text = "\n".join(lines)
+    if M <= tail_pairs:
+        tail = _format_pairs(pairs)
+        print(json.dumps({"summary": None, "tail": tail}))
+        return
 
-    if len(text) > limit_chars:
-        text = "...(обрезано)\n" + text[-limit_chars:]
+    start = max(M - tail_pairs - summary_max_pairs, 0)
+    end = M - tail_pairs
+    summary_pairs = pairs[start:end]
+    tail_pairs_data = pairs[end:]
 
-    print(json.dumps({"skeleton": text}))
+    cache_key = f"{session_id}:{start}:{end}"
+    summary = _get_cache(cache_key)
+
+    if summary is None and summary_enabled and len(summary_pairs) > 0:
+        summary = _generate_summary(summary_pairs)
+        if summary:
+            _set_cache(cache_key, summary)
+
+    tail = _format_pairs(tail_pairs_data)
+    print(json.dumps({"summary": summary, "tail": tail}))
+
+
+def _format_pairs(pairs):
+    lines = []
+    for p in pairs:
+        user = p['user_content'] or ''
+        assistant = p['assistant_content'] or ''
+        ts = p['ts'].strftime('%H:%M') if p['ts'] else ''
+        lines.append(f"[{ts}] User: {user}\nAssistant: {assistant}")
+    return "\n\n".join(lines)
+
+
+def _get_cache(cache_key: str):
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT summary FROM skeleton_cache WHERE cache_key = %s",
+                    (cache_key,)
+                )
+                row = cur.fetchone()
+                return row[0] if row else None
+    except Exception:
+        return None
+
+
+def _set_cache(cache_key: str, summary: str):
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO skeleton_cache (cache_key, summary)
+                    VALUES (%s, %s)
+                    ON CONFLICT (cache_key) DO UPDATE SET summary = EXCLUDED.summary
+                """, (cache_key, summary))
+            conn.commit()
+    except Exception:
+        pass
+
+
+def _generate_summary(pairs):
+    ollama_base_url = os.getenv('OLLAMA_BASE_URL', 'http://192.168.1.145:11434')
+    ollama_url = f"{ollama_base_url}/api/generate"
+    summary_max_tokens = int(os.getenv('SKELETON_SUMMARY_MAX_TOKENS', 2000))
+
+    pairs_text = _format_pairs(pairs)
+    prompt = f"""Ты анализируешь фрагмент диалога между пользователем и AI-ассистентом.
+Извлеки структурированную информацию строго по формату:
+
+## Хронология
+[номер]. [HH:MM]: одна строка — суть обмена
+
+## Факты и решения
+- Конкретные значения: порты, пути, параметры, версии
+- Принятые решения: что выбрали и почему
+- Договорённости: что планируем сделать
+
+## Артефакты (если были)
+- [файл/команда]: что сделали
+
+Секцию 'Артефакты' не включать если не было файлов или команд.
+Отвечай только на русском. Только структура, никакого вступления.
+
+Диалог:
+{pairs_text}"""
+
+    try:
+        response = httpx.post(
+            ollama_url,
+            json={
+                "model": "qwen3.5:27b",
+                "prompt": prompt,
+                "stream": False,
+                "think": False,
+                "options": {
+                    "num_ctx": 40000,
+                    "num_predict": summary_max_tokens
+                }
+            },
+            timeout=60.0
+        )
+        data = response.json()
+        return data.get("response", "").strip()
+    except Exception:
+        return None
 
 
 def cmd_focus(session_id: str, query: str = None, top_k: int = 5, min_score: float = 0.4):
