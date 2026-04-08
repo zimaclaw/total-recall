@@ -153,7 +153,11 @@ function getFlashback(prompt) {
 function getSkeleton(sessionId) {
   const out = runPython(SESSION, ['skeleton', '--session-id', sessionId], 10000);
   const data = parseJson(out);
-  return data?.skeleton || null;
+  const summary = data?.summary || null;
+  const tail = data?.tail || null;
+  if (!tail) return null;
+  if (summary) return `[SUMMARY]\n${summary}\n\n[RECENT]\n${tail}`;
+  return tail;
 }
 
 function getFocus(sessionId, prompt) {
