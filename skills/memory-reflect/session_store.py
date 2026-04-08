@@ -510,12 +510,12 @@ def _generate_summary(pairs):
         response = httpx.post(
             ollama_url,
             json={
-                "model": "qwen3.5:27b",
+                "model": "qwen3.5:27b-q4_K_M-N2",
                 "prompt": prompt,
                 "stream": False,
                 "think": False,
                 "options": {
-                    "num_ctx": 40000,
+                    "num_ctx": 40960,
                     "num_predict": summary_max_tokens
                 }
             },
