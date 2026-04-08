@@ -50,7 +50,7 @@ function log(msg) {
   appendFileSync(LOG, `[${new Date().toISOString()}] ${msg}\n`);
 }
 
-function runPython(script, args, timeoutMs = 8000) {
+function runPython(script, args, timeoutMs = 5000) {
   try {
     return execFileSync(PYTHON, [script, ...args], {
       timeout: timeoutMs,
@@ -151,7 +151,7 @@ function getFlashback(prompt) {
 }
 
 function getSkeleton(sessionId) {
-  const out = runPython(SESSION, ['skeleton', '--session-id', sessionId]);
+  const out = runPython(SESSION, ['skeleton', '--session-id', sessionId], 10000);
   const data = parseJson(out);
   return data?.skeleton || null;
 }
