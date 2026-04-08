@@ -878,7 +878,6 @@ def main():
 
     p = sub.add_parser("skeleton")
     p.add_argument("--session-id", required=True)
-    p.add_argument("--max-tokens", type=int, default=2000)
 
     p = sub.add_parser("focus")
     p.add_argument("--session-id", required=True)
