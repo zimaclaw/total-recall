@@ -1,0 +1,267 @@
+# STATE.yaml — OpenClaw Personal Assistant with Total Recall
+
+project: total-recall
+created: 2026-04-10T09:39:00Z
+updated: 2026-04-10T09:39:00Z
+goal: Реализация полной системы памяти для Пятницы — Neo4j (опыт), PostgreSQL (сессии + KB), Curator (flashback)
+
+## Контекст
+
+**Архитектура (из decisions.md):**
+- Neo4j (.145:7687) — опыт агента с vector index на Conclusion
+- PostgreSQL (.145:5432) — сессии + KB (hot/cold)
+- Qdrant (.145:6333) — KB векторы (когда KB реализован)
+- CORE.md (~2K) — постоянный блок в system prompt
+
+**Curator (текущая реализация):**
+```
+prependSystemContext:
+[1] CORE.md (~2K) → стабильный ✅
+[2] Flashback (4-8K) → Neo4j опыт ✅
+[3] Скелет (2-4K) → PostgreSQL промпты ✅
+[4] Фокус (4-8K) → pgvector релевантный кусок ✅
+[5] KB (2-4K) → не реализовано ⏳
+```
+
+**Топология:**
+- .181: Пятница (llamacpp, 165K контекст)
+- .145: Qwen3.5-27B, Neo4j, PostgreSQL, Qdrant
+- Машина 3: OpenClaw gateway с total-recall plugin
+
+---
+
+## Задачи
+
+### task-1: Neo4j vector index для Conclusions
+- status: done
+- owner: friday
+- depends_on: []
+- output: "Neo4j: VECTOR INDEX conclusion_embedding ON Conclusion(embedding)"
+- notes:
+  - Реализовано: 2026-03-31 ✅
+  - Индекс: dimensions 1024, cosine distance ✅
+  - Coverage: 100% (68/68 Conclusions имеют embedding) ✅
+  - Автоматическое создание embedding при upsert_conclusion ✅
+- next_action: Выполнено
+
+### task-2: Flashback пороги и лимиты
+- status: done
+- owner: friday
+- depends_on: [task-1]
+- output: ".env: FLASHBACK_* переменные"
+- notes:
+  - Conclusion: similarity > 0.65, топ-5 ✅
+  - Lesson: conf > 0.60, топ-2 ✅
+  - Principle: conf > 0.70, топ-1 ✅
+  - Meta: макс similarity > 0.80, топ-1 ✅
+- next_action: Выполнено
+
+### task-3: PostgreSQL schema для сессий
+- status: done
+- owner: friday
+- depends_on: []
+- output: "PostgreSQL: sessions, session_messages, session_vectors, session_pairs"
+- notes:
+  - sessions — одна строка на сессию ✅
+  - session_messages — чистые промпты (без injected контекста) ✅
+  - session_vectors — pgvector embeddings для фокуса ✅
+  - session_pairs — пары user+assistant для скелета ✅
+  - archive_sessions_from_jsonl — реализовано 2026-04-05 ✅
+  - 1,754 сообщения из 28 сессий архивировано ✅
+- next_action: Выполнено
+
+### task-4: SESSION SKELETON — summary + tail
+- status: done
+- owner: friday
+- depends_on: [task-3]
+- output: "handler.js: getSkeleton() с summary + tail"
+- notes:
+  - Summary — сжатие всей сессии через LLM (1000 токенов) ✅
+  - Tail — последние 10 пар промптов пользователя ✅
+  - Кэш summary в файл ✅
+  - Реализовано: 2026-04-08 ✅
+- next_action: Выполнено
+
+### task-5: SESSION FOCUS — pgvector
+- status: done
+- owner: friday
+- depends_on: [task-3]
+- output: "PostgreSQL: pgvector embeddings для session_messages"
+- notes:
+  - Фокус — семантически релевантный кусок сессии ✅
+  - Top 5 пар, min similarity 0.40 ✅
+  - Max 3000 токенов, max 500 токенов на пару ✅
+- next_action: Выполнено
+
+### task-6: pair_write через agent_end
+- status: done
+- owner: friday
+- depends_on: [task-3]
+- output: "handler.js: onMessageSent через agent_end"
+- notes:
+  - Запись пар user+assistant в PostgreSQL ✅
+  - agent_end — один раз за turn для TUI/webchat ✅
+  - sessionId через lastKnownSessionId ✅
+  - Реализовано: 2026-04-06 ✅
+- next_action: Выполнено
+
+### task-7: sessionId в message_received
+- status: done
+- owner: friday
+- depends_on: []
+- output: "handler.js: pendingUserMessages с sessionId"
+- notes:
+  - Хранение sessionId вместе с content в pendingUserMessages ✅
+  - lastKnownSessionId обновляется в beforePromptBuild ✅
+  - Реализовано: 2026-04-06 ✅
+- next_action: Выполнено
+
+### task-8: CORE.md — постоянный блок памяти
+- status: done
+- owner: friday
+- depends_on: []
+- output: "workspace/CORE.md"
+- notes:
+  - Файл создан и наполнен базовой информацией ✅
+  - ~2K токенов ✅
+  - Подаётся в prependSystemContext ✅
+  - Редактируется Пятницей и агентом памяти ✅
+- next_action: Выполнено
+
+### task-9: KB (Knowledge Base) — schema
+- status: done
+- owner: friday
+- depends_on: [task-3]
+- output: "PostgreSQL: kb_hot, kb_cold таблицы"
+- notes:
+  - kb_hot — найденное агентом, 7 дней ✅
+  - kb_cold — промотированное, вечное ✅
+  - Qdrant collection: knowledge_base (1024 dims, Cosine) ✅
+  - kb_store.py CLI: kb_save, kb_promote, kb_fetch, kb_search, kb_cleanup ✅
+- next_action: Выполнено
+
+### task-10: KB — триггер подсказки
+- status: done
+- owner: friday
+- depends_on: [task-9]
+- output: "handler.js: onAfterToolCall с KB HINT"
+- notes:
+  - Триггер: web_search ≥ 750 токенов ✅
+  - KB HINT в следующем контексте ✅
+  - Реализовано: 2026-04-06 ✅
+- next_action: Выполнено
+
+### task-11: KB — активное использование
+- status: pending
+- owner: friday
+- depends_on: [task-9, task-10]
+- priority: P1
+- output: "KB HINT → сохранение записей"
+- notes:
+  - onAfterToolCall проверить в реальном использовании ⏳
+  - Метрики: сколько раз KB HINT приводил к сохранению ⏳
+  - Авто-промоушн записей с высоким access_count ⏳
+- next_action: "Настроить мониторинг использования KB HINT"
+
+### task-12: Архивирование сессий — автоматизация
+- status: pending
+- owner: friday
+- depends_on: [task-3]
+- priority: P2
+- output: "command:new хук → архивирование предыдущей сессии"
+- notes:
+  - `/new` создаёт новую запись в sessions ✅
+  - Архивирование предыдущей сессии из .jsonl в PostgreSQL (реализовано 2026-04-05) ✅
+  - TODO: автоматическое архивирование при таймауте (опционально) ⏳
+- next_action: "Проверить работает ли архивирование при /new"
+
+### task-13: DEBUG режим — удаление
+- status: pending
+- owner: friday
+- depends_on: []
+- priority: P3
+- output: "TOTAL_RECALL_DEBUG=1 удалён"
+- notes:
+  - DEBUG режим включён 2026-04-06 ✅
+  - План удаления: через 2-3 дня (2026-04-09) ✅
+  - Текущая дата: 2026-04-10 — пора удалить! ⏳
+- next_action: "unset TOTAL_RECALL_DEBUG && openclaw gateway restart"
+
+### task-14: Субагенты — фильтрация
+- status: done
+- owner: friday
+- depends_on: []
+- output: "handler.js: if (agentId !== 'main') return"
+- notes:
+  - Субагентские сессии не пишутся в PostgreSQL ✅
+  - Фильтр по agentId в onMessageReceived и onAgentEnd ✅
+  - Реализовано: 2026-04-04 ✅
+- next_action: Выполнено
+
+### task-15: OpenClaw upgrade — мониторинг
+- status: pending
+- owner: friday
+- depends_on: []
+- priority: P2
+- output: "Мониторинг новых версий OpenClaw"
+- notes:
+  - Текущая версия: 2026.3.22 ✅
+  - Известные баги 2026.4.1: #59598 (timeout llamacpp), #57860 (auth regression) ✅
+  - Следующий release: отслеживать fix для #59598 ⏳
+- next_action: "Проверить GitHub на fix для #59598"
+
+---
+
+## Гипотезы
+
+| ID | Statement | Status | Critical | Go Criteria |
+|----|-----------|--------|----------|-------------|
+| H1 | Flashback улучшает качество ответов | unvalidated | true | ≥30% улучшение по feedback |
+| H2 | SESSION SKELETON + FOCUS достаточны для контекста | unvalidated | true | ≤20% context waste |
+| H3 | KB уменьшает дублирование поиска | unvalidated | false | ≥50% reuse KB результатов |
+| H4 | Neo4j vectors точнее категорий | unvalidated | false | ≥10% точность recall |
+
+---
+
+## Метрики успеха
+
+- ✅ Neo4j vector index coverage: 100% (68/68 Conclusions)
+- ✅ PostgreSQL: 1,754 сообщения из 28 сессий архивировано
+- ✅ DEBUG режим работает (подтверждено в логе)
+- ⏳ KB HINT → сохранение: метрики не собраны
+- ⏳ Flashback эффективность: метрики не собраны
+
+---
+
+## Открытые вопросы
+
+- [ ] onAfterToolCall проверить в реальном использовании
+- [ ] Метрики: сколько раз KB HINT приводил к сохранению
+- [ ] Авто-промоушн записей с высоким access_count
+- [ ] Автоматическое архивирование при таймауте (опционально)
+- [ ] Следующий OpenClaw release с fix #59598
+
+---
+
+## Решения
+
+| Дата | Решение | Рациональ | Автор |
+|------|---------|-----------|-------|
+| 2026-03-31 | Neo4j vectors вместо mem0 | mem0 recall не работал | Oleg |
+| 2026-04-05 | Архивирование сессий при /new | явный сигнал от пользователя | Oleg |
+| 2026-04-06 | sessionId в pendingUserMessages | sessions.json находила не ту сессию | Oleg |
+| 2026-04-06 | pair_write через agent_end | message:sent не срабатывает для TUI | Oleg |
+| 2026-04-08 | SESSION SKELETON summary + tail | длинные сессии >50K токенов | Oleg |
+
+---
+
+## Следующие шаги (приоритет)
+
+1. **task-13** — удалить DEBUG режим (TOTAL_RECALL_DEBUG=1)
+2. **task-11** — настроить мониторинг KB HINT
+3. **task-12** — проверить архивирование при /new
+4. **task-15** — проверить GitHub на fix #59598
+
+---
+
+*Last updated: 2026-04-10T09:39:00Z*
