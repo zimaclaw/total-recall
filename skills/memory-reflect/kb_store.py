@@ -21,17 +21,22 @@ from qdrant_client.models import PointStruct
 PG_DSN    = settings.pg_dsn
 BGE_URL   = str(settings.embed_url).rsplit("/api", 1)[0]
 BGE_MODEL = settings.embed_model
+import os as _os
+_all_proxy = _os.environ.pop('ALL_PROXY', None)
+_all_proxy_lower = _os.environ.pop('all_proxy', None)
 QDRANT_CLIENT = QdrantClient(host=settings.qdrant_host, port=settings.qdrant_port)
+if _all_proxy: _os.environ['ALL_PROXY'] = _all_proxy
+if _all_proxy_lower: _os.environ['all_proxy'] = _all_proxy_lower
 
 # ─── Helpers ───────────────────────────────────────────────────────────────────
 
 def embed(text: str) -> list[float]:
     """Создать embedding через bge-m3."""
-    resp = httpx.post(
-        f"{BGE_URL}/api/embeddings",
-        json={"model": BGE_MODEL, "prompt": text},
-        timeout=10.0,
-    )
+    with httpx.Client(transport=httpx.HTTPTransport(), timeout=10.0) as client:
+        resp = client.post(
+            f"{BGE_URL}/api/embeddings",
+            json={"model": BGE_MODEL, "prompt": text},
+        )
     resp.raise_for_status()
     return resp.json()["embedding"]
 
