@@ -24,7 +24,7 @@ BGE_MODEL = settings.embed_model
 import os as _os
 _all_proxy = _os.environ.pop('ALL_PROXY', None)
 _all_proxy_lower = _os.environ.pop('all_proxy', None)
-QDRANT_CLIENT = QdrantClient(host=settings.qdrant_host, port=settings.qdrant_port)
+QDRANT_CLIENT = QdrantClient(host=settings.qdrant_host, port=settings.qdrant_port, check_compatibility=False)
 if _all_proxy: _os.environ['ALL_PROXY'] = _all_proxy
 if _all_proxy_lower: _os.environ['all_proxy'] = _all_proxy_lower
 

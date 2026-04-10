@@ -30,11 +30,11 @@ SUMMARY_THRESHOLD = settings.summary_threshold
 # ─── Helpers ───────────────────────────────────────────────────────────────
 
 def embed(text: str) -> list[float]:
-    resp = httpx.post(
-        f"{BGE_URL}/api/embeddings",
-        json={"model": BGE_MODEL, "prompt": text},
-        timeout=10.0,
-    )
+    with httpx.Client(transport=httpx.HTTPTransport(), timeout=10.0) as client:
+        resp = client.post(
+            f"{BGE_URL}/api/embeddings",
+            json={"model": BGE_MODEL, "prompt": text},
+        )
     resp.raise_for_status()
     return resp.json()["embedding"]
 
@@ -43,15 +43,15 @@ def get_conn():
 
 def call_llm(prompt: str) -> str:
     """Вызов LLM через ollama API для создания summary."""
-    resp = httpx.post(
-        f"{SUMMARY_URL}/api/chat",
-        json={
-            "model": SUMMARY_MODEL,
-            "messages": [{"role": "user", "content": prompt}],
-            "stream": False,
-        },
-        timeout=120.0,
-    )
+    with httpx.Client(transport=httpx.HTTPTransport(), timeout=120.0) as client:
+        resp = client.post(
+            f"{SUMMARY_URL}/api/chat",
+            json={
+                "model": SUMMARY_MODEL,
+                "messages": [{"role": "user", "content": prompt}],
+                "stream": False,
+            },
+        )
     resp.raise_for_status()
     return resp.json()["message"]["content"]
 
@@ -509,20 +509,20 @@ def _generate_summary(pairs):
 {pairs_text}"""
 
     try:
-        response = httpx.post(
-            ollama_url,
-            json={
-                "model": "qwen3.5:27b-q4_K_M-N2",
-                "prompt": prompt,
-                "stream": False,
-                "think": False,
-                "options": {
-                    "num_ctx": 40960,
-                    "num_predict": summary_max_tokens
-                }
-            },
-            timeout=60.0
-        )
+        with httpx.Client(transport=httpx.HTTPTransport(), timeout=60.0) as client:
+            response = client.post(
+                ollama_url,
+                json={
+                    "model": "qwen3.5:27b-q4_K_M-N2",
+                    "prompt": prompt,
+                    "stream": False,
+                    "think": False,
+                    "options": {
+                        "num_ctx": 40960,
+                        "num_predict": summary_max_tokens
+                    }
+                },
+            )
         data = response.json()
         return data.get("response", "").strip()
     except Exception:
