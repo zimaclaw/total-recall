@@ -28,9 +28,11 @@ class Settings(BaseSettings):
     qdrant_collection: str   = "reflections"
     similarity_threshold: float = 0.72
 
-    # ─── Embeddings & Reranker ────────────────────────────────────────────────
+    # ─── Embeddings ──────────────────────────────────────────────────────────
     embed_url:    str = "http://localhost:11435/api/embed"
     embed_model:  str = "bge-m3:latest"
+
+    # ─── Reranker (deprecated, не используется) ───────────────────────────────
     rerank_url:   str = "http://localhost:11435/api/rerank"
     rerank_model: str = "xitao/bge-reranker-v2-m3:latest"
 

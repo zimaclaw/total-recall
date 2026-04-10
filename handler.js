@@ -3,13 +3,13 @@ import { readFileSync, appendFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 
 const LOG     = '/tmp/total-recall.log';
-const DIR     = '/home/ironman/.openclaw/skills/memory-reflect';
+const DIR     = process.env.MEMORY_REFLECT_DIR || `${homedir()}/.openclaw/skills/memory-reflect`;
 const PYTHON  = `${DIR}/.venv/bin/python`;
 const REFLECT = `${DIR}/memory-reflect.py`;
 const SESSION = `${DIR}/session_store.py`;
 const KB_STORE = `${DIR}/kb_store.py`;
-const CORE_MD = '/home/ironman/.openclaw/workspace/CORE.md';
-const OPENCLAW_CONFIG_PATH = process.env.OPENCLAW_CONFIG_PATH || '/home/ironman/.openclaw/openclaw.json';
+const CORE_MD = process.env.CORE_MD_PATH || `${homedir()}/.openclaw/workspace/CORE.md`;
+const OPENCLAW_CONFIG_PATH = process.env.OPENCLAW_CONFIG_PATH || `${homedir()}/.openclaw/openclaw.json`;
 const CURATOR_DEFAULT_CONTEXT = parseInt(process.env.CURATOR_DEFAULT_CONTEXT) || 32000;
 
 // ─── Curator бюджет ─────────────────────────────────────────────────────────
@@ -51,11 +51,17 @@ function log(msg) {
 }
 
 function runPython(script, args, timeoutMs = 5000) {
+  // Передаём очищенный env — Python скрипты работают только с локальной сетью (.145)
+  // ALL_PROXY (singbox/SOCKS) не нужен и вызывает 502/ETIMEDOUT для локальных вызовов
+  const env = { ...process.env };
+  delete env.ALL_PROXY;
+  delete env.all_proxy;
   try {
     return execFileSync(PYTHON, [script, ...args], {
       timeout: timeoutMs,
       cwd: DIR,
       encoding: 'utf8',
+      env,
     }).trim();
   } catch (err) {
     log(`ERROR ${script} ${args[0]}: ${err.message}`);

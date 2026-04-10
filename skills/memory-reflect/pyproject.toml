@@ -10,7 +10,7 @@ neo4j = "*"
 qdrant-client = "*"
 requests = "*"
 psycopg2-binary = "^2.9.11"
-httpx = "^0.28.1"
+httpx = {extras = ["socks"], version = "^0.28.1"}
 pydantic-settings = "^2.13.1"
 python-dotenv = "^1.2.2"
 
