@@ -54,8 +54,13 @@ function runPython(script, args, timeoutMs = 5000) {
   // Передаём очищенный env — Python скрипты работают только с локальной сетью (.145)
   // ALL_PROXY (singbox/SOCKS) не нужен и вызывает 502/ETIMEDOUT для локальных вызовов
   const env = { ...process.env };
-  delete env.ALL_PROXY;
-  delete env.all_proxy;
+  // Обнуляем (не удаляем) — httpx различает отсутствие ключа и пустую строку
+  env.ALL_PROXY = '';
+  env.all_proxy = '';
+  env.HTTPS_PROXY = '';
+  env.https_proxy = '';
+  env.HTTP_PROXY = '';
+  env.http_proxy = '';
   try {
     return execFileSync(PYTHON, [script, ...args], {
       timeout: timeoutMs,
