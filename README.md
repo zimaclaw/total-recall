@@ -111,8 +111,10 @@ PGPASSWORD=<pw> psql -h 192.168.1.145 -U openclaw -d openclaw \
 |-----|-----|---------------|
 | `message_received` | void | Запись промпта в PostgreSQL |
 | `before_prompt_build` | modifying | Сборка окна контекста (Curator) |
-| `agent_end` | void | Запись пары user+assistant (pair_write) |
+| `agent_end` | void | Запись пары user+assistant (pair_write) — **только main agent** |
 | `command:new` | void | Граница сессии |
+
+**Важно:** `onMessageSent` обрабатывает только сообщения от main agent (`agentId === 'main'`), игнорируя субагентов.
 
 ## Контекст (prependSystemContext)
 
@@ -210,6 +212,41 @@ cd ~/.openclaw/skills/memory-reflect
 .venv/bin/python session_store.py focus --session-id <uuid> --query "тема" --top-k 5 --min-score 0.4
 ```
 
+## Knowledge Base (kb_save)
+
+Сохранение важной информации в Knowledge Base для повторного использования.
+
+**Когда использовать:** После tavily/web_search с полезной информацией — сохрани результат в KB чтобы не искать повторно.
+
+```bash
+cd ~/.openclaw/skills/memory-reflect
+
+# Сохранить в KB
+.venv/bin/python kb_store.py kb_save \
+  --title "заголовок" \
+  --summary "краткое описание (~200 токенов)" \
+  --content "полный текст" \
+  --source-url "url" \
+  --source-tool "tavily" \
+  --category "search"
+
+# Поиск в KB
+.venv/bin/python kb_store.py kb_search \
+  --query "запрос" \
+  --limit 3
+
+# Промотировать в cold (если запись оказалась полезной)
+.venv/bin/python kb_store.py kb_promote --id <uuid>
+```
+
+**Параметры kb_save:**
+- `--title` — заголовок записи (обязательно)
+- `--summary` — краткое описание ~200 токенов (обязательно)
+- `--content` — полный текст (обязательно)
+- `--source-url` — URL источника (опционально)
+- `--source-tool` — инструмент откуда пришла информация (опционально, default: "tavily")
+- `--category` — категория (опционально, default: "search")
+
 ## PostgreSQL схема
 
 **Хост:** `.145:5432`  
@@ -269,4 +306,4 @@ PGPASSWORD=<pw> psql -h 192.168.1.145 -U openclaw -d openclaw \
 
 ## Версия
 
-v0.2.0 (2026-04-06)
+v0.2.1 (2026-04-18) — добавлен фильтр agentId в onMessageSent, добавлена документация kb_save

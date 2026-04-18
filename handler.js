@@ -287,6 +287,9 @@ export async function beforePromptBuild(event, ctx) {
 }
 
 export function onMessageSent(event, ctx) {
+  const agentId = ctx?.agentId || 'main';
+  if (agentId !== 'main') return;
+  
   // agent_end event: event.messages — массив всех сообщений сессии
   // Берём последнее assistant сообщение
   const lastAssistant = [...event.messages].reverse().find(m => m.role === 'assistant');
