@@ -612,7 +612,8 @@ export async function beforePromptBuild(event, ctx) {
   log(`before_prompt_build: event.keys=${Object.keys(event).join(', ')}`);
   log(`before_prompt_build: event.prompt type=${typeof event?.prompt}, length=${event?.prompt?.length || 0}`);
   log(`before_prompt_build: event.content type=${typeof event?.content}, length=${event?.content?.length || 0}`);
-  if (event?.messages?.length) {
+  log(`before_prompt_build: event.messages=${JSON.stringify(event?.messages).substring(0, 200)}`);
+  if (event?.messages && event.messages.length > 0) {
     log(`before_prompt_build: event.messages.length=${event.messages.length}`);
     const lastMsg = event.messages[event.messages.length - 1];
     log(`before_prompt_build: lastMsg.role=${lastMsg?.role}, content=${lastMsg?.content?.substring(0, 100) || 'N/A'}`);
