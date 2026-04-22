@@ -64,7 +64,43 @@ cp -r ~/projects/total-recall /home/ironman/.openclaw/extensions/
     "entries": {
       "total-recall": {
         "enabled": true,
-        "config": {}
+        "config": {
+          "debug": true,
+          "paths": {
+            "log": "/tmp/total-recall.log",
+            "memoryReflect": "/home/ironman/.openclaw/skills/memory-reflect",
+            "coreMd": "/home/ironman/.openclaw/workspace/CORE.md"
+          },
+          "kb": {
+            "scoreThreshold": 0.55,
+            "maxResults": 3
+          },
+          "curator": {
+            "defaultContext": 32000
+          },
+          "embeddings": {
+            "url": "http://192.168.1.145:11435",
+            "model": "bge-m3",
+            "timeout": 30000
+          },
+          "llm": {
+            "provider": "ollama",
+            "url": "http://192.168.1.145:11434",
+            "model": "qwen3.5:27b-q4_K_M-N2",
+            "timeout": 60000
+          },
+          "postgresql": {
+            "host": "192.168.1.145",
+            "port": 5432,
+            "database": "openclaw"
+          },
+          "handoff": {
+            "maxMessages": 20,
+            "similarityThreshold": 0.3,
+            "minMessagesForSemantic": 15,
+            "alwaysIncludeLast": 5
+          }
+        }
       }
     }
   }
@@ -82,6 +118,80 @@ cp -r ~/projects/total-recall/skills/memory-reflect/* ~/.openclaw/skills/memory-
 ```bash
 openclaw gateway restart
 ```
+
+## Конфигурация
+
+Настройки total-recall хранятся в `~/.openclaw/openclaw.json` в секции `plugins.entries["total-recall"].config`.
+
+### Секции конфигурации
+
+#### debug
+- **Тип:** boolean
+- **По умолчанию:** false
+- **Описание:** Включить debug logging
+
+#### paths
+- **Тип:** object
+- **Поля:**
+  - `log` (string): Путь к лог файлу (default: `/tmp/total-recall.log`)
+  - `memoryReflect` (string): Путь к memory-reflect skill (default: `/home/ironman/.openclaw/skills/memory-reflect`)
+  - `coreMd` (string): Путь к CORE.md (default: `/home/ironman/.openclaw/workspace/CORE.md`)
+
+#### kb
+- **Тип:** object
+- **Поля:**
+  - `scoreThreshold` (number): Порог Similarity для фильтрации результатов KB (default: 0.55)
+  - `maxResults` (integer): Максимум результатов из KB (default: 3)
+
+#### curator
+- **Тип:** object
+- **Поля:**
+  - `defaultContext` (integer): Контекстное окно по умолчанию для Curator (default: 32000)
+
+#### embeddings
+- **Тип:** object
+- **Поля:**
+  - `url` (string): URL сервиса embeddings (default: `http://192.168.1.145:11435`)
+  - `model` (string): Модель embeddings (default: `bge-m3`)
+  - `timeout` (integer): Таймаут в мс (default: 30000)
+
+#### llm
+- **Тип:** object
+- **Поля:**
+  - `provider` (string): Провайдер LLM (default: `ollama`)
+  - `url` (string): URL LLM (default: `http://192.168.1.145:11434`)
+  - `model` (string): Модель LLM (default: `qwen3.5:27b-q4_K_M-N2`)
+  - `timeout` (integer): Таймаут в мс (default: 60000)
+
+#### postgresql
+- **Тип:** object
+- **Поля:**
+  - `host` (string): Хост PostgreSQL (default: `192.168.1.145`)
+  - `port` (integer): Порт PostgreSQL (default: 5432)
+  - `database` (string): База данных (default: `openclaw`)
+
+#### handoff
+- **Тип:** object
+- **Поля:**
+  - `maxMessages` (integer): Максимум сообщений для handoff (default: 20)
+  - `similarityThreshold` (number): Порог Similarity для семантического поиска (default: 0.3)
+  - `minMessagesForSemantic` (integer): Минимум сообщений для включения семантического поиска (default: 15)
+  - `alwaysIncludeLast` (integer): Всегда включать последние N сообщений (default: 5)
+
+### Fallback
+
+Если секция в конфиге отсутствует — используется fallback:
+1. Конфиг (openclaw.json)
+2. Переменные окружения (env)
+3. Хардкод значения (hardcode)
+
+Пример:
+```javascript
+const LOG = TR_CONFIG.paths?.log || '/tmp/total-recall.log';
+const DEBUG_MODE = TR_CONFIG.debug ?? (process.env.TOTAL_RECALL_DEBUG === '1');
+```
+
+---
 
 ## Проверка
 

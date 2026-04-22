@@ -2,7 +2,7 @@
 
 project: total-recall
 created: 2026-04-10T09:39:00Z
-updated: 2026-04-10T09:39:00Z
+updated: 2026-04-22T12:00:00Z
 goal: Реализация полной системы памяти для Пятницы — Neo4j (опыт), PostgreSQL (сессии + KB), Curator (flashback)
 
 ## Контекст
@@ -175,17 +175,18 @@ prependSystemContext:
   - TODO: автоматическое архивирование при таймауте (опционально) ⏳
 - next_action: "Проверить работает ли архивирование при /new"
 
-### task-13: DEBUG режим — удаление
-- status: pending
+### task-13: DEBUG режим — статус
+- status: done
 - owner: friday
 - depends_on: []
 - priority: P3
-- output: "TOTAL_RECALL_DEBUG=1 удалён"
+- output: "DEBUG режим оставлен включённым"
 - notes:
   - DEBUG режим включён 2026-04-06 ✅
   - План удаления: через 2-3 дня (2026-04-09) ✅
-  - Текущая дата: 2026-04-10 — пора удалить! ⏳
-- next_action: "unset TOTAL_RECALL_DEBUG && openclaw gateway restart"
+  - Решение Олега (2026-04-22): оставить DEBUG включённым ✅
+  - Конфиг: TR_CONFIG.debug = true в openclaw.json ✅
+- next_action: Выполнено (DEBUG оставлен)
 
 ### task-14: Субагенты — фильтрация
 - status: done
@@ -209,6 +210,35 @@ prependSystemContext:
   - Известные баги 2026.4.1: #59598 (timeout llamacpp), #57860 (auth regression) ✅
   - Следующий release: отслеживать fix для #59598 ⏳
 - next_action: "Проверить GitHub на fix для #59598"
+
+### task-16: Миграция конфигурации
+- status: done
+- owner: friday
+- depends_on: []
+- priority: P1
+- output: "openclaw.json: total-recall.config секция"
+- notes:
+  - Schema обновлена в openclaw.plugin.json ✅
+  - Конфиг применён в openclaw.json (debug, paths, kb, curator, embeddings, llm, postgresql, handoff) ✅
+  - handler.js обновлён (getTotalRecallConfig(), замена хардкода на конфиг) ✅
+  - Git commit + push: 5bca23d, 7117c65 ✅
+  - Деплой выполнен, gateway перезапущен ✅
+  - Плагин total-recall успешно инициализирован ✅
+  - Выполнено: 2026-04-22 ✅
+- next_action: Выполнено
+
+### task-17: Фаза 1 — ручной handoff для KB
+- status: pending
+- owner: friday
+- depends_on: [task-16]
+- priority: P1
+- output: "Команда /kb handoff для сохранения сессии в KB"
+- notes:
+  - Конфигурация готова (task-16) ✅
+  - Бюджет: 4 часа
+  - Семантический отбор через pgvector (bge-m3)
+  - Fallback на last N messages
+- next_action: "Реализовать команду /kb handoff"
 
 ---
 
@@ -257,11 +287,11 @@ prependSystemContext:
 
 ## Следующие шаги (приоритет)
 
-1. **task-13** — удалить DEBUG режим (TOTAL_RECALL_DEBUG=1)
+1. **task-17** — реализовать команду `/kb handoff` (Фаза 1)
 2. **task-11** — настроить мониторинг KB HINT
 3. **task-12** — проверить архивирование при /new
 4. **task-15** — проверить GitHub на fix #59598
 
 ---
 
-*Last updated: 2026-04-10T09:39:00Z*
+*Last updated: 2026-04-22T12:00:00Z*
