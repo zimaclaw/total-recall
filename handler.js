@@ -513,10 +513,8 @@ function createNewSession(oldSessionId) {
  * @returns {array} список handoffs
  */
 function getHandoffsFromKb(limit, search) {
-  const args = ['kb_list', '--category', 'session', '--limit', limit.toString()];
-  if (search) {
-    args.push('--search', search);
-  }
+  // kb_store.py не имеет kb_list — используем kb_search с category='session'
+  const args = ['kb_search', '--query', search || '', '--category', 'session', '--limit', limit.toString()];
   
   const out = runPython(KB_STORE, args, 10000);
   const data = parseJson(out);
@@ -609,13 +607,15 @@ export async function beforePromptBuild(event, ctx) {
   const t0 = Date.now();
   
   if (ctx?.sessionId) lastKnownSessionId = ctx.sessionId;
-  const userPrompt = event?.prompt || '';
+  const userPrompt = event?.prompt || event?.content || '';
   if (!userPrompt) return {};
 
   // ─── Перехват команд /kb ДО передачи в LLM ──────────────────────────────
+  log(`before_prompt_build: userPrompt="${userPrompt.substring(0, 50)}"`);
   if (userPrompt.startsWith('/kb ')) {
     const sessionId = resolveSessionId(ctx, event);
     const result = handleKbCommands(userPrompt.substring(4).trim(), sessionId, event);
+    log(`before_prompt_build: /kb command result=${JSON.stringify(result)}`);
     if (result?.text) {
       // Возвращаем ответ напрямую (bypass LLM)
       log(`before_prompt_build: /kb command handled directly`);
