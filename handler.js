@@ -216,6 +216,360 @@ function block(title, content) {
   return `=== ${title} ===\n${content}\n=== END ${title} ===`;
 }
 
+// ─── Команды KB ───────────────────────────────────────────────────────────
+
+/**
+ * Обработка всех команд KB
+ * @param {string} args - аргументы команды (после /kb)
+ * @param {string} sessionId - ID сессии
+ * @param {object} event - event объект (для res())
+ * @returns {object|null} результат обработки или null
+ */
+function handleKbCommands(args, sessionId, event) {
+  const parts = args.split(' ');
+  const command = parts[0];
+  const rest = parts.slice(1).join(' ');
+  
+  switch (command) {
+    case 'handoff':
+      return handleKbHandoff(rest, sessionId, event);
+    
+    case 'handoffs':
+      return handleKbHandoffsList(rest);
+    
+    case 'load':
+      return handleKbLoad(rest, sessionId, event);
+    
+    case 'help':
+      return { text: getKbHelp() };
+    
+    default:
+      return { text: `❌ Неизвестная команда KB: ${command}\n\n${getKbHelp()}` };
+  }
+}
+
+/**
+ * Создание handoff сессии
+ * @param {string} args - аргументы (описание + --new-session)
+ * @param {string} sessionId - ID сессии
+ * @param {object} event - event объект
+ * @returns {object} результат
+ */
+function handleKbHandoff(args, sessionId, event) {
+  // Парсинг аргументов
+  const newSession = args.includes('--new-session');
+  let description = args;
+  if (newSession) {
+    description = args.replace('--new-session', '').trim();
+  }
+  description = description.trim().replace(/^["']|["']$/g, ''); // Удалить кавычки
+  
+  // Валидация
+  if (!description || description.length < 5) {
+    return {
+      text: "❌ Укажи краткое описание результата (минимум 5 символов)\n\nПример:\n/kb handoff \"Решена проблема с портом 8080\"\n/kb handoff \"Исследовал архитектуру\" --new-session"
+    };
+  }
+  
+  log(`handleKbHandoff: description="${description}" newSession=${newSession}`);
+  
+  // 1. Получить сообщения сессии
+  const messages = getSessionMessagesForHandoff(sessionId);
+  if (!messages || messages.length === 0) {
+    return { text: "❌ Нет сообщений в сессии для сохранения" };
+  }
+  
+  // 2. Отбор сообщений (семантический или last N)
+  const selectedMessages = selectMessagesForHandoff(messages);
+  
+  // 3. Форматирование контента
+  const content = formatMessagesForHandoff(selectedMessages);
+  
+  // 4. Сохранение в KB
+  const result = saveToKb(description, content, sessionId);
+  if (!result || !result.id) {
+    return { text: "❌ Ошибка сохранения в KB" };
+  }
+  
+  // 5. Если --new-session — создать новую сессию
+  let newSessionText = '';
+  if (newSession) {
+    createNewSession(sessionId);
+    newSessionText = '\n\n✅ Новая сессия создана.';
+  }
+  
+  // 6. Ответ пользователю
+  return {
+    text: `✅ Сессия сохранена в KB\n\n` +
+          `Title: ${description}\n` +
+          `Messages: ${selectedMessages.length}\n` +
+          `KB ID: ${result.id}\n` +
+          `Category: session\n` +
+          newSessionText
+  };
+}
+
+/**
+ * Лист handoffs
+ * @param {string} args - аргументы (--limit N, --search "query")
+ * @returns {object} результат
+ */
+function handleKbHandoffsList(args) {
+  // Парсинг аргументов
+  let limit = 20;
+  let search = null;
+  
+  const limitMatch = args.match(/--limit\s+(\d+)/);
+  if (limitMatch) {
+    limit = parseInt(limitMatch[1], 10);
+  }
+  
+  const searchMatch = args.match(/--search\s+["']?([^"'\s]+)["']?/);
+  if (searchMatch) {
+    search = searchMatch[1];
+  }
+  
+  // Получение handoffs из KB
+  const handoffs = getHandoffsFromKb(limit, search);
+  if (!handoffs || handoffs.length === 0) {
+    return { text: "Нет handoffs в KB" };
+  }
+  
+  // Форматирование вывода
+  let output = `Handoffs (последние ${handoffs.length}):\n\n`;
+  handoffs.forEach((h, idx) => {
+    const num = idx + 1;
+    const date = new Date(h.created_at).toISOString().replace('T', ' ').substring(0, 19);
+    output += `#${num} | ${date} UTC | ${h.title}\n`;
+  });
+  
+  output += `\nКоманды:\n`;
+  output += `  /kb handoff <id>     — детали handoff\n`;
+  output += `  /kb load <id>        — загрузить в контекст\n`;
+  output += `  /kb delete <id>      — удалить\n`;
+  output += `  /kb promote <id>     — промотировать в cold\n`;
+  
+  return { text: output };
+}
+
+/**
+ * Загрузка handoff в контекст
+ * @param {string} args - аргументы (id или номер или частичное совпадение)
+ * @param {string} sessionId - ID сессии
+ * @param {object} event - event объект
+ * @returns {object} результат
+ */
+function handleKbLoad(args, sessionId, event) {
+  if (!args) {
+    return { text: "❌ Укажи ID handoff\n\nПример:\n/kb load 1\n/kb load \"архитектура\"" };
+  }
+  
+  // Парсинг ID (номер, id, или частичное совпадение)
+  const handoff = findHandoffById(args);
+  if (!handoff) {
+    return { text: `❌ Handoff не найден: ${args}` };
+  }
+  
+  // Форматирование контекста
+  const context = formatHandoffContext(handoff);
+  
+  // Добавление в prependSystemContext (через event)
+  if (event?.prependSystemContext) {
+    event.prependSystemContext = context + '\n\n' + event.prependSystemContext;
+  }
+  
+  // Ответ пользователю
+  const date = new Date(handoff.created_at).toISOString().replace('T', ' ').substring(0, 19);
+  return {
+    text: `✅ Handoff загружен в контекст\n\n` +
+          `Title: ${handoff.title}\n` +
+          `Date: ${date} UTC\n` +
+          `Size: ~${estimateTokens(handoff.summary)} токенов`
+  };
+}
+
+/**
+ * Помощь по командам KB
+ * @returns {string} текст помощи
+ */
+function getKbHelp() {
+  return `Knowledge Base команды:
+
+/kb handoff "описание" [--new-session]
+  Сохранить текущую сессию в KB
+  --new-session — создать новую сессию после сохранения
+
+/kb handoffs [--limit N] [--search "запрос"]
+  Показать handoffs в KB
+
+/kb load <id|номер|частичное_совпадение>
+  Загрузить handoff в контекст
+
+/kb help
+  Показать эту справку
+
+Примеры:
+  /kb handoff "Исследовал архитектуру OpenClaw"
+  /kb handoff "Решена проблема с портом 8080" --new-session
+  /kb handoffs --limit 10
+  /kb handoffs --search "архитектура"
+  /kb load 1
+  /kb load "архитектура"
+`;
+}
+
+// ─── Вспомогательные функции для handoff ──────────────────────────────────
+
+/**
+ * Получить сообщения сессии для handoff
+ * @param {string} sessionId - ID сессии
+ * @returns {array} массив сообщений
+ */
+function getSessionMessagesForHandoff(sessionId) {
+  const out = runPython(SESSION, ['get_messages', '--session-id', sessionId], 10000);
+  const data = parseJson(out);
+  return data?.messages || [];
+}
+
+/**
+ * Отбор сообщений для handoff (семантический или last N)
+ * @param {array} messages - все сообщения сессии
+ * @returns {array} отобранные сообщения
+ */
+function selectMessagesForHandoff(messages) {
+  const config = TR_CONFIG.handoff || {};
+  const { maxMessages, minMessagesForSemantic, alwaysIncludeLast } = config;
+  
+  const maxMsg = maxMessages || 20;
+  const minSemantic = minMessagesForSemantic || 15;
+  const alwaysLast = alwaysIncludeLast || 5;
+  
+  // Если сообщений мало — вернуть все
+  if (messages.length <= maxMsg) {
+    return messages;
+  }
+  
+  // Если сообщений достаточно для семантического поиска
+  if (messages.length >= minSemantic) {
+    // TODO: семантический отбор через pgvector
+    // Пока — fallback на last N
+    log(`selectMessagesForHandoff: semantic search not implemented yet, using last ${maxMsg}`);
+  }
+  
+  // Fallback: последние N сообщений
+  return messages.slice(-maxMsg);
+}
+
+/**
+ * Форматирование сообщений для handoff
+ * @param {array} messages - сообщения
+ * @returns {string} форматированный текст
+ */
+function formatMessagesForHandoff(messages) {
+  return messages.map(m => {
+    const role = m.role === 'user' ? 'User' : 'Assistant';
+    return `[${role}]\n${m.content}`;
+  }).join('\n\n');
+}
+
+/**
+ * Сохранение в KB
+ * @param {string} title - заголовок
+ * @param {string} content - контент
+ * @param {string} sessionId - ID сессии
+ * @returns {object} результат (id, etc.)
+ */
+function saveToKb(title, content, sessionId) {
+  // Генерация summary через LLM (упрощённо — пока используем title)
+  const summary = title; // TODO: генерация summary через LLM
+  
+  const out = runPython(KB_STORE, [
+    'kb_save',
+    '--title', title,
+    '--summary', summary,
+    '--content', content,
+    '--source-tool', 'session-handoff',
+    '--category', 'session'
+  ], 30000);
+  
+  return parseJson(out);
+}
+
+/**
+ * Создание новой сессии
+ * @param {string} oldSessionId - ID старой сессии
+ */
+function createNewSession(oldSessionId) {
+  // Архивирование старой сессии (если нужно)
+  // Создание новой сессии
+  log(`createNewSession: archived old session ${oldSessionId}`);
+  // TODO: реализация архивирования и создания новой сессии
+}
+
+/**
+ * Получение handoffs из KB
+ * @param {number} limit - лимит
+ * @param {string|null} search - поисковый запрос
+ * @returns {array} список handoffs
+ */
+function getHandoffsFromKb(limit, search) {
+  const args = ['kb_list', '--category', 'session', '--limit', limit.toString()];
+  if (search) {
+    args.push('--search', search);
+  }
+  
+  const out = runPython(KB_STORE, args, 10000);
+  const data = parseJson(out);
+  return data?.results || [];
+}
+
+/**
+ * Поиск handoff по ID/номеру/title
+ * @param {string} query - запрос
+ * @returns {object|null} handoff или null
+ */
+function findHandoffById(query) {
+  // Вариант 1: номер (#1 или 1)
+  if (/^#?\d+$/.test(query)) {
+    const index = parseInt(query.replace('#', ''), 10) - 1;
+    const handoffs = getHandoffsFromKb(index + 1, null);
+    return handoffs[index] || null;
+  }
+  
+  // Вариант 2: частичное совпадение по title
+  const handoffs = getHandoffsFromKb(100, query);
+  if (handoffs.length > 0) {
+    return handoffs[0];
+  }
+  
+  return null;
+}
+
+/**
+ * Форматирование handoff для контекста
+ * @param {object} handoff - handoff объект
+ * @returns {string} форматированный текст
+ */
+function formatHandoffContext(handoff) {
+  const date = new Date(handoff.created_at).toISOString().replace('T', ' ').substring(0, 19);
+  return block('PREVIOUS SESSION HANDOFF',
+    `Title: ${handoff.title}\n` +
+    `Date: ${date} UTC\n` +
+    `\nSummary:\n${handoff.summary}`
+  );
+}
+
+/**
+ * Оценка токенов (приблизительно)
+ * @param {string} text - текст
+ * @returns {number} количество токенов
+ */
+function estimateTokens(text) {
+  return Math.round(text.length / 4); // ~4 символа на токен
+}
+
+// ─── Конец функций для handoff ────────────────────────────────────────────
+
 // ─── Хуки ────────────────────────────────────────────────────────────────
 
 export function onCommandNew(event, ctx) {
@@ -230,6 +584,21 @@ export function onMessageReceived(event, ctx) {
   const sessionId = resolveSessionId(ctx, event);
   log(`message_received: sessionId=${sessionId} content=${!!content}`);
   if (!content || !sessionId) return;
+  
+  // ─── Обработка команд KB ────────────────────────────────────────────────
+  if (content.startsWith('/kb ')) {
+    const result = handleKbCommands(content.substring(4).trim(), sessionId, event);
+    if (result) {
+      if (result.text) {
+        return { text: result.text };
+      }
+      if (result.skip) {
+        return; // Команда обработана, не сохранять в сессию
+      }
+    }
+  }
+  // ─── Конец обработки команд KB ──────────────────────────────────────────
+  
   runPython(SESSION, ['session_start', '--session-id', sessionId], 5000);
   // Сохраняем sessionId + content вместе для последующего pair_write
   pendingUserMessages.set('current', { sessionId, content });
