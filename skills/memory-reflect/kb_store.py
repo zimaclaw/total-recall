@@ -2,6 +2,12 @@
 kb_store.py — CLI для работы с Knowledge Base.
 Вызывается из handler.js через execFileSync.
 """
+import os as _dbg_os
+with open('/tmp/proxy_debug.log', 'w') as _f:
+    _f.write(f"ALL_PROXY={repr(_dbg_os.environ.get('ALL_PROXY'))}\n")
+    _f.write(f"all_proxy={repr(_dbg_os.environ.get('all_proxy'))}\n")
+    _f.write(f"HTTPS_PROXY={repr(_dbg_os.environ.get('HTTPS_PROXY'))}\n")
+
 
 import json
 import argparse
@@ -24,7 +30,7 @@ BGE_MODEL = settings.embed_model
 import os as _os
 _all_proxy = _os.environ.pop('ALL_PROXY', None)
 _all_proxy_lower = _os.environ.pop('all_proxy', None)
-QDRANT_CLIENT = QdrantClient(host=settings.qdrant_host, port=settings.qdrant_port, check_compatibility=False)
+QDRANT_CLIENT = QdrantClient(host=settings.qdrant_host, port=settings.qdrant_port)
 if _all_proxy: _os.environ['ALL_PROXY'] = _all_proxy
 if _all_proxy_lower: _os.environ['all_proxy'] = _all_proxy_lower
 
