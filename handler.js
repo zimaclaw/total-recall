@@ -2,15 +2,38 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, appendFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 
-const LOG     = '/tmp/total-recall.log';
-const DIR     = process.env.MEMORY_REFLECT_DIR || `${homedir()}/.openclaw/skills/memory-reflect`;
+// Пути с fallback на конфиг → env → хардкод
+const LOG     = TR_CONFIG.paths?.log || '/tmp/total-recall.log';
+const DIR     = TR_CONFIG.paths?.memoryReflect || process.env.MEMORY_REFLECT_DIR || `${homedir()}/.openclaw/skills/memory-reflect`;
 const PYTHON  = `${DIR}/.venv/bin/python`;
 const REFLECT = `${DIR}/memory-reflect.py`;
 const SESSION = `${DIR}/session_store.py`;
 const KB_STORE = `${DIR}/kb_store.py`;
-const CORE_MD = process.env.CORE_MD_PATH || `${homedir()}/.openclaw/workspace/CORE.md`;
+const CORE_MD = TR_CONFIG.paths?.coreMd || process.env.CORE_MD_PATH || `${homedir()}/.openclaw/workspace/CORE.md`;
 const OPENCLAW_CONFIG_PATH = process.env.OPENCLAW_CONFIG_PATH || `${homedir()}/.openclaw/openclaw.json`;
-const CURATOR_DEFAULT_CONTEXT = parseInt(process.env.CURATOR_DEFAULT_CONTEXT) || 32000;
+const CURATOR_DEFAULT_CONTEXT = TR_CONFIG.curator?.defaultContext || parseInt(process.env.CURATOR_DEFAULT_CONTEXT) || 32000;
+
+// ─── Чтение конфига total-recall из openclaw.json ───────────────────────────
+function getTotalRecallConfig() {
+  try {
+    const config = JSON.parse(readFileSync(OPENCLAW_CONFIG_PATH, 'utf8'));
+    const trConfig = config?.plugins?.entries?.['total-recall']?.config || {};
+    
+    // DEBUG: логирование загрузки конфига
+    const debugMode = trConfig.debug ?? (process.env.TOTAL_RECALL_DEBUG === '1');
+    if (debugMode) {
+      log(`Total Recall Config loaded: ${JSON.stringify(trConfig, null, 2)}`);
+    }
+    
+    return trConfig;
+  } catch (err) {
+    log(`Error reading total-recall config: ${err.message}`);
+    return {};
+  }
+}
+
+// Кэширование конфига (вычисляем один раз при старте)
+const TR_CONFIG = getTotalRecallConfig();
 
 // ─── Curator бюджет ─────────────────────────────────────────────────────────
 // Чтение contextWindow из openclaw.json
@@ -183,11 +206,15 @@ function getFocus(sessionId, prompt) {
  * @returns {string|null} форматированный список результатов или null
  */
 function getKB(prompt) {
-  const out = runPython(KB_STORE, ['kb_search', '--query', prompt, '--limit', '3'], 10000);
+  const scoreThreshold = TR_CONFIG.kb?.scoreThreshold || 0.55;
+  const maxResults = TR_CONFIG.kb?.maxResults || 3;
+  
+  const out = runPython(KB_STORE, ['kb_search', '--query', prompt, '--limit', maxResults.toString()], 10000);
   const data = parseJson(out);
   if (!data?.results?.length) return null;
   const lines = data.results
-    .filter(r => r.score > 0.55)
+    .filter(r => r.score > scoreThreshold)
+    .slice(0, maxResults)
     .map(r => `[${r.title}]\n${r.summary}`)
     .join('\n\n');
   return lines || null;
@@ -261,8 +288,8 @@ export async function beforePromptBuild(event, ctx) {
   if (stableParts.length) {
     result.prependSystemContext = stableParts.join('\n\n');
     
-    // DEBUG: переключатель через TOTAL_RECALL_DEBUG=1
-    const debugMode = process.env.TOTAL_RECALL_DEBUG === '1';
+    // DEBUG: переключатель через конфиг → env
+    const debugMode = TR_CONFIG.debug ?? (process.env.TOTAL_RECALL_DEBUG === '1');
     if (debugMode) {
       const hasSkeleton = result.prependSystemContext.includes('SESSION SKELETON');
       const hasFocus = result.prependSystemContext.includes('SESSION FOCUS');
