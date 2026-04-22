@@ -2,6 +2,21 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, appendFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 
+const OPENCLAW_CONFIG_PATH = process.env.OPENCLAW_CONFIG_PATH || `${homedir()}/.openclaw/openclaw.json`;
+
+// ─── Чтение конфига total-recall из openclaw.json ───────────────────────────
+function getTotalRecallConfig() {
+  try {
+    const config = JSON.parse(readFileSync(OPENCLAW_CONFIG_PATH, 'utf8'));
+    return config?.plugins?.entries?.['total-recall']?.config || {};
+  } catch (err) {
+    return {};
+  }
+}
+
+// Кэширование конфига (вычисляем один раз при старте)
+const TR_CONFIG = getTotalRecallConfig();
+
 // Пути с fallback на конфиг → env → хардкод
 const LOG     = TR_CONFIG.paths?.log || '/tmp/total-recall.log';
 const DIR     = TR_CONFIG.paths?.memoryReflect || process.env.MEMORY_REFLECT_DIR || `${homedir()}/.openclaw/skills/memory-reflect`;
@@ -10,30 +25,7 @@ const REFLECT = `${DIR}/memory-reflect.py`;
 const SESSION = `${DIR}/session_store.py`;
 const KB_STORE = `${DIR}/kb_store.py`;
 const CORE_MD = TR_CONFIG.paths?.coreMd || process.env.CORE_MD_PATH || `${homedir()}/.openclaw/workspace/CORE.md`;
-const OPENCLAW_CONFIG_PATH = process.env.OPENCLAW_CONFIG_PATH || `${homedir()}/.openclaw/openclaw.json`;
 const CURATOR_DEFAULT_CONTEXT = TR_CONFIG.curator?.defaultContext || parseInt(process.env.CURATOR_DEFAULT_CONTEXT) || 32000;
-
-// ─── Чтение конфига total-recall из openclaw.json ───────────────────────────
-function getTotalRecallConfig() {
-  try {
-    const config = JSON.parse(readFileSync(OPENCLAW_CONFIG_PATH, 'utf8'));
-    const trConfig = config?.plugins?.entries?.['total-recall']?.config || {};
-    
-    // DEBUG: логирование загрузки конфига
-    const debugMode = trConfig.debug ?? (process.env.TOTAL_RECALL_DEBUG === '1');
-    if (debugMode) {
-      log(`Total Recall Config loaded: ${JSON.stringify(trConfig, null, 2)}`);
-    }
-    
-    return trConfig;
-  } catch (err) {
-    log(`Error reading total-recall config: ${err.message}`);
-    return {};
-  }
-}
-
-// Кэширование конфига (вычисляем один раз при старте)
-const TR_CONFIG = getTotalRecallConfig();
 
 // ─── Curator бюджет ─────────────────────────────────────────────────────────
 // Чтение contextWindow из openclaw.json
