@@ -613,35 +613,41 @@ export async function beforePromptBuild(event, ctx) {
   
   if (ctx?.sessionId) lastKnownSessionId = ctx.sessionId;
   
-  // Отладка: полная структура event
-  log(`before_prompt_build: event.keys=${Object.keys(event).join(', ')}`);
-  log(`before_prompt_build: event.prompt type=${typeof event?.prompt}, length=${event?.prompt?.length || 0}`);
-  log(`before_prompt_build: event.content type=${typeof event?.content}, length=${event?.content?.length || 0}`);
-  log(`before_prompt_build: event.messages=${JSON.stringify(event?.messages).substring(0, 200)}`);
-  if (event?.messages && event.messages.length > 0) {
-    log(`before_prompt_build: event.messages.length=${event.messages.length}`);
-    const lastMsg = event.messages[event.messages.length - 1];
-    log(`before_prompt_build: lastMsg.type=${typeof lastMsg}, role=${lastMsg?.role}, content.type=${typeof lastMsg?.content}, content.length=${lastMsg?.content?.length || 0}`);
-    if (typeof lastMsg?.content === 'string') {
-      log(`before_prompt_build: lastMsg.content="${lastMsg.content.substring(0, 100)}"`);
-    } else {
-      log(`before_prompt_build: lastMsg.content is not string: ${JSON.stringify(lastMsg?.content).substring(0, 200)}`);
+  // Проверка event.messages
+  if (!event?.messages || !Array.isArray(event.messages) || event.messages.length === 0) {
+    log(`before_prompt_build: event.messages is invalid`);
+    return {};
+  }
+  
+  // Поиск последнего сообщения с role='user'
+  let userMsg = null;
+  for (let i = event.messages.length - 1; i >= 0; i--) {
+    if (event.messages[i]?.role === 'user') {
+      userMsg = event.messages[i];
+      break;
     }
   }
   
-  // userPrompt: последнее сообщение с role='user' из event.messages или event.prompt/event.content
-  let userMsg = null;
-  if (event?.messages && event.messages.length > 0) {
-    // Ищем последнее сообщение с role='user'
-    for (let i = event.messages.length - 1; i >= 0; i--) {
-      if (event.messages[i]?.role === 'user') {
-        userMsg = event.messages[i];
-        break;
-      }
+  // Извлечение текста из content (строка, массив объектов, объект с text, или другой формат)
+  let userPrompt = '';
+  if (userMsg) {
+    if (typeof userMsg.content === 'string') {
+      userPrompt = userMsg.content;
+    } else if (Array.isArray(userMsg.content)) {
+      const textObj = userMsg.content.find(c => c.type === 'text' && typeof c.text === 'string');
+      userPrompt = textObj?.text || '';
+    } else if (typeof userMsg.content === 'object' && userMsg.content.text) {
+      userPrompt = userMsg.content.text;
+    } else {
+      // Fallback
+      userPrompt = String(userMsg.content || '');
     }
   }
-  const userPrompt = (userMsg && typeof userMsg.content === 'string' ? userMsg.content : null) || event?.prompt || event?.content || '';
-  if (!userPrompt) return {};
+  
+  if (!userPrompt) {
+    log(`before_prompt_build: no user message found, messages.length=${event.messages.length}`);
+    return {};
+  }
 
   // ─── Перехват команд /kb ДО передачи в LLM ──────────────────────────────
   log(`before_prompt_build: userPrompt="${userPrompt.substring(0, 50)}"`);
