@@ -228,7 +228,7 @@ prependSystemContext:
 - next_action: Выполнено
 
 ### task-17: Фаза 1 — ручной handoff для KB
-- status: pending
+- status: in_progress
 - owner: friday
 - depends_on: [task-16]
 - priority: P1
@@ -238,7 +238,9 @@ prependSystemContext:
   - Бюджет: 4 часа
   - Семантический отбор через pgvector (bge-m3)
   - Fallback на last N messages
-- next_action: "Реализовать команду /kb handoff"
+  - План готов: PLAN_PHASE1_HANDOFF.md ✅
+  - Документация обновлена: 2026-04-22 21:00 UTC ✅
+- next_action: "Реализовать команду /kb handoff — Шаг 1.1.1: парсинг аргументов"
 
 ---
 

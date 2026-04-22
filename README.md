@@ -357,6 +357,40 @@ cd ~/.openclaw/skills/memory-reflect
 - `--source-tool` — инструмент откуда пришла информация (опционально, default: "tavily")
 - `--category` — категория (опционально, default: "search")
 
+---
+
+## Handoff (сохранение сессии в KB)
+
+**Статус:** ⏳ в реализации (task-17, 2026-04-22)
+
+**Цель:** Ручное сохранение текущей сессии в Knowledge Base для восстановления контекста позже.
+
+**Команды:**
+
+```bash
+# Создать handoff
+/kb handoff "Описание результата или задачи"
+
+# Создать handoff и начать новую сессию
+/kb handoff --new-session "Завершена настройка"
+
+# Показать существующие handoffs (будет реализовано)
+/kb handoffs
+
+# Загрузить handoff (будет реализовано)
+/kb load <id>
+```
+
+**Как работает:**
+1. Собирает последние 20 сообщений сессии из PostgreSQL
+2. Генерирует summary через LLM (~200 токенов)
+3. Сохраняет в KB через `kb_store.py kb_save --source-tool handoff`
+4. Создаёт mapping в таблице `kb_session_mapping`
+
+**Файл плана:** `PLAN_PHASE1_HANDOFF.md`
+
+---
+
 ## PostgreSQL схема
 
 **Хост:** `.145:5432`  
