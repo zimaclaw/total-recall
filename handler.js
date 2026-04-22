@@ -580,12 +580,17 @@ export function onCommandNew(event, ctx) {
 export function onMessageReceived(event, ctx) {
   const content = event?.content;
   const sessionId = resolveSessionId(ctx, event);
-  log(`message_received: sessionId=${sessionId} content=${!!content}`);
+  log(`message_received: sessionId=${sessionId} content=${!!content} content.length=${content?.length || 0}`);
+  if (content) {
+    log(`message_received: content="${content.substring(0, 100)}"`);
+  }
   if (!content || !sessionId) return;
   
   // ─── Обработка команд KB ────────────────────────────────────────────────
   if (content.startsWith('/kb ')) {
+    log(`message_received: handling /kb command: "${content.substring(4, 50)}"`);
     const result = handleKbCommands(content.substring(4).trim(), sessionId, event);
+    log(`message_received: /kb command result=${JSON.stringify(result)}`);
     if (result) {
       if (result.text) {
         return { text: result.text };
