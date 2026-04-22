@@ -616,7 +616,12 @@ export async function beforePromptBuild(event, ctx) {
   if (event?.messages && event.messages.length > 0) {
     log(`before_prompt_build: event.messages.length=${event.messages.length}`);
     const lastMsg = event.messages[event.messages.length - 1];
-    log(`before_prompt_build: lastMsg.role=${lastMsg?.role}, content=${lastMsg?.content?.substring(0, 100) || 'N/A'}`);
+    log(`before_prompt_build: lastMsg.type=${typeof lastMsg}, role=${lastMsg?.role}, content.type=${typeof lastMsg?.content}, content.length=${lastMsg?.content?.length || 0}`);
+    if (typeof lastMsg?.content === 'string') {
+      log(`before_prompt_build: lastMsg.content="${lastMsg.content.substring(0, 100)}"`);
+    } else {
+      log(`before_prompt_build: lastMsg.content is not string: ${JSON.stringify(lastMsg?.content).substring(0, 200)}`);
+    }
   }
   
   // userPrompt: последнее сообщение из event.messages (если role=user) или event.prompt/event.content
