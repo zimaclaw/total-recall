@@ -619,7 +619,9 @@ export async function beforePromptBuild(event, ctx) {
     log(`before_prompt_build: lastMsg.role=${lastMsg?.role}, content=${lastMsg?.content?.substring(0, 100) || 'N/A'}`);
   }
   
-  const userPrompt = event?.prompt || event?.content || '';
+  // userPrompt: последнее сообщение из event.messages (если role=user) или event.prompt/event.content
+  const lastMsg = event?.messages && event.messages.length > 0 ? event.messages[event.messages.length - 1] : null;
+  const userPrompt = (lastMsg && lastMsg.role === 'user' ? lastMsg.content : null) || event?.prompt || event?.content || '';
   if (!userPrompt) return {};
 
   // ─── Перехват команд /kb ДО передачи в LLM ──────────────────────────────
