@@ -612,6 +612,18 @@ export async function beforePromptBuild(event, ctx) {
   const userPrompt = event?.prompt || '';
   if (!userPrompt) return {};
 
+  // ─── Перехват команд /kb ДО передачи в LLM ──────────────────────────────
+  if (userPrompt.startsWith('/kb ')) {
+    const sessionId = resolveSessionId(ctx, event);
+    const result = handleKbCommands(userPrompt.substring(4).trim(), sessionId, event);
+    if (result?.text) {
+      // Возвращаем ответ напрямую (bypass LLM)
+      log(`before_prompt_build: /kb command handled directly`);
+      return { text: result.text };
+    }
+  }
+  // ─── Конец перехвата команд /kb ─────────────────────────────────────────
+
   const sessionId = resolveSessionId(ctx, event);
   log(`before_prompt_build: sessionKey=${ctx?.sessionKey} sessionId=${ctx?.sessionId} agentId=${ctx?.agentId}`);
   // Сохраняем маппинг channelId:senderId → sessionId для message_received
