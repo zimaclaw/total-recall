@@ -607,6 +607,17 @@ export async function beforePromptBuild(event, ctx) {
   const t0 = Date.now();
   
   if (ctx?.sessionId) lastKnownSessionId = ctx.sessionId;
+  
+  // Отладка: полная структура event
+  log(`before_prompt_build: event.keys=${Object.keys(event).join(', ')}`);
+  log(`before_prompt_build: event.prompt type=${typeof event?.prompt}, length=${event?.prompt?.length || 0}`);
+  log(`before_prompt_build: event.content type=${typeof event?.content}, length=${event?.content?.length || 0}`);
+  if (event?.messages?.length) {
+    log(`before_prompt_build: event.messages.length=${event.messages.length}`);
+    const lastMsg = event.messages[event.messages.length - 1];
+    log(`before_prompt_build: lastMsg.role=${lastMsg?.role}, content=${lastMsg?.content?.substring(0, 100) || 'N/A'}`);
+  }
+  
   const userPrompt = event?.prompt || event?.content || '';
   if (!userPrompt) return {};
 
